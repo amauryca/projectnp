@@ -1,0 +1,11 @@
+{
+  "id": "NP-1998-12-24-CONTINUITY-BREACH",
+  "trigger": "300 seconds of visible, active tape playback",
+  "transmission": [
+    "THE GAME DID NOT END.",
+    "IT NOTICED YOU."
+  ],
+  "source": "INSIDE",
+  "receivedAt": "00:05:00",
+  "gateSealUnlocked": 1
+}
