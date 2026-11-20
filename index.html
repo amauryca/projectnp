@@ -11,6 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+  <script defer src="puzzles.js"></script>
   <script defer src="main.js"></script>
 </head>
 <body>
@@ -41,7 +42,7 @@
         <span class="transmission-footer">SOURCE: UNKNOWN · 00:00:17</span>
       </div>
       <div class="seal-list" aria-label="Gate seal progress">
-        <div class="seal-list-head"><span>SEAL REGISTER</span><span id="seal-count">00—10</span></div>
+      <div class="seal-list-head"><span>SEAL REGISTER</span><span id="seal-count">00—10</span></div>
         <div class="seal-grid" id="seal-grid"></div>
       </div>
       <button class="primary-button" id="recover-button"><span class="button-icon">▶</span><span>RECOVER TAPE 01</span><span class="button-arrow">↗</span></button>
@@ -66,7 +67,7 @@
   </dialog>
 
   <dialog id="seal-dialog" class="seal-dialog" aria-labelledby="seal-heading">
-    <div class="seal-card"><button id="close-seal" class="icon-button" aria-label="Close seal record">×</button><span class="eyebrow" id="seal-kicker">SEAL 01 / RECORD</span><h2 id="seal-heading">No entry</h2><p id="seal-description">The record has not been recovered.</p><div class="seal-record" id="seal-record">WAITING FOR FIRST TRANSMISSION…</div><button id="seal-action" class="primary-button small-button">OPEN RECOVERED MEDIA <span class="button-arrow">↗</span></button></div>
+    <div class="seal-card"><button id="close-seal" class="icon-button" aria-label="Close seal record">×</button><span class="eyebrow" id="seal-kicker">SEAL 01 / PUZZLE</span><h2 id="seal-heading">No entry</h2><p id="seal-description">The record has not been recovered.</p><div class="puzzle-body" id="puzzle-body"></div><form id="puzzle-form" class="puzzle-form"><label for="puzzle-answer">SUBMIT RECOVERED CODE</label><div class="answer-row"><input id="puzzle-answer" autocomplete="off" spellcheck="false" maxlength="80" placeholder="ENTER CODE" required><button class="primary-button small-button" type="submit">SUBMIT ↗</button></div></form><div class="puzzle-feedback" id="puzzle-feedback" aria-live="polite"></div><button id="hint-button" class="hint-button" type="button">REQUEST HINT 01 / 03</button><div class="seal-record" id="seal-record">WAITING FOR FIRST TRANSMISSION…</div></div>
   </dialog>
 
   <footer class="page-footer"><span>FICTIONAL INTERACTIVE EXPERIENCE · NO CAMPUS VISIT REQUIRED</span><span>BUILD 09.12 / SIGNAL LOSS EXPECTED</span></footer>

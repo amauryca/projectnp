@@ -1,6 +1,6 @@
 # Project North Pole
 
-An atmospheric, browser-native 3D gate for a serious Christmas horror ARG. The first recovered artifact is a legacy Flash game wrapped in Ruffle. Five minutes of visible play triggers a brief signal failure and unlocks the first gate seal.
+An atmospheric, browser-native 3D gate for a serious Christmas horror ARG. The recovered Flash game is the prologue; after five minutes of visible play, a signal failure unlocks the first of ten connected puzzles.
 
 ## Run locally
 
@@ -11,6 +11,12 @@ python3 -m http.server 8000
 ```
 
 Then open `http://localhost:8000`.
+
+## The ten-stage route
+
+The seals contain time reconciliation, a temporal shadow viewer, a 3D orientation puzzle, a phase-alignment signal, a USF coordinate fix, archive-version analysis, an inventory join, route reconstruction, dispatch-message ordering, and a final fragment reconstruction. Each correct solution releases a glyph used by the ending. Hints unlock one at a time and progress is saved in the browser.
+
+Puzzle 02 currently uses a stylized in-site image timeline. Before a public run, verify which historical imagery dates are actually available at the chosen Google Earth pin and replace the prototype frame years in `puzzles.js` with those capture dates. Puzzle 05 points to the approximate USF Tampa campus address datum; the grid solve is entirely online.
 
 ## The recovered SWF
 
@@ -28,5 +34,5 @@ The timer counts visible time while the recovered-media window is open, pauses w
 
 - The 3D gate is rendered locally with Canvas 2D projection and custom geometry; it has no 3D framework dependency.
 - Ruffle is loaded from its official public CDN to run the Flash archive in current browsers.
-- Gate progress is saved in the browser's local storage for the current device.
-- Puzzle seals 02–10 are presented as a lore interface scaffold and can be connected to the designed puzzle sequence as those records are authored.
+- Puzzle answers are checked client-side using SHA-256 hashes; this is suitable for a prototype but does not prevent a determined player from inspecting the public source.
+- Gate progress and hints are saved in the browser's local storage for the current device.
