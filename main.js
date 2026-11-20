@@ -8,6 +8,14 @@
   const ruffleContainer = $("#ruffle-container");
   const SAVE_KEY = "np-gate-09-progress-v1";
   const PLAY_SECONDS = 300;
+  const IDLE_CUE_MS = 15000;
+  const AWAY_CUE_MS = 30000;
+  const VOICE_KEY = "np-gate-09-voice-v1";
+  let voiceEnabled = localStorage.getItem(VOICE_KEY) !== "off";
+  let lastActivityAt = Date.now();
+  let awaySince = document.hidden ? Date.now() : null;
+  let lastVoiceCueAt = 0;
+  let idleCueTimer = null;
   const puzzles = window.NP_PUZZLES;
   let progress = readProgress();
   let gamePlayer = null;
@@ -28,6 +36,66 @@
   function saveProgress() { localStorage.setItem(SAVE_KEY, JSON.stringify(progress)); }
   function updateClock() { $("#utc-clock").textContent = new Date().toISOString().slice(11, 19) + " UTC"; }
 
+  function updateVoiceControl() {
+    const button = $("#voice-toggle");
+    if (!button) return;
+    button.textContent = `VOICE: ${voiceEnabled ? "ON" : "OFF"}`;
+    button.setAttribute("aria-pressed", String(voiceEnabled));
+  }
+  function speakPlayCue() {
+    if (!voiceEnabled || Date.now() - lastVoiceCueAt < 90000) return;
+    if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
+    const utterance = new SpeechSynthesisUtterance("play the game");
+    utterance.volume = 0.12;
+    utterance.rate = 0.82;
+    utterance.pitch = 0.62;
+    utterance.lang = "en-US";
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+    lastVoiceCueAt = Date.now();
+  }
+  function scheduleIdleCue() {
+    clearTimeout(idleCueTimer);
+    if (document.hidden) return;
+    const remaining = Math.max(0, IDLE_CUE_MS - (Date.now() - lastActivityAt));
+    idleCueTimer = setTimeout(() => {
+      if (!document.hidden && Date.now() - lastActivityAt >= IDLE_CUE_MS) speakPlayCue();
+    }, remaining);
+  }
+  function noteActivity() {
+    lastActivityAt = Date.now();
+    if (!document.hidden) scheduleIdleCue();
+  }
+  function markAway() {
+    if (awaySince === null) awaySince = Date.now();
+    clearTimeout(idleCueTimer);
+  }
+  function returnToPage() {
+    const awayDuration = awaySince === null ? 0 : Date.now() - awaySince;
+    awaySince = null;
+    if (awayDuration >= AWAY_CUE_MS) speakPlayCue();
+    lastActivityAt = Date.now();
+    scheduleIdleCue();
+  }
+  function initializePresenceCue() {
+    const voiceButton = $("#voice-toggle");
+    updateVoiceControl();
+    voiceButton?.addEventListener("click", () => {
+      voiceEnabled = !voiceEnabled;
+      localStorage.setItem(VOICE_KEY, voiceEnabled ? "on" : "off");
+      if (!voiceEnabled) window.speechSynthesis?.cancel();
+      updateVoiceControl();
+      noteActivity();
+    });
+    ["pointermove", "pointerdown", "keydown", "touchstart", "wheel", "click"].forEach(type => {
+      window.addEventListener(type, noteActivity, { passive: type !== "keydown" });
+    });
+    document.addEventListener("visibilitychange", () => document.hidden ? markAway() : returnToPage());
+    window.addEventListener("blur", markAway);
+    window.addEventListener("focus", () => { if (!document.hidden) returnToPage(); });
+    if (document.hidden) markAway(); else scheduleIdleCue();
+  }
+
   function setupCanvas() {
     const rect = canvas.getBoundingClientRect(); dpr = Math.min(window.devicePixelRatio || 1, 1.7);
     width = rect.width; height = rect.height; canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
@@ -42,7 +110,7 @@
     return [x, y, z];
   }
   function project(v) {
-    const p = rotate(v), camera = 13.5, scale = Math.min(width, height) * .67;
+    const p = rotate(v), camera = 8.4, scale = Math.min(width, height) * 1.2;
     const depth = camera - p[2];
     if (depth < 1) return null;
     return { x: width * .5 + p[0] * scale / depth, y: height * .51 - p[1] * scale / depth, z: p[2], scale: scale / depth };
@@ -261,5 +329,5 @@
   tapeDialog.addEventListener("click",e=>{if(e.target===tapeDialog)closeTape();});
   sealDialog.addEventListener("click",e=>{if(e.target===sealDialog)sealDialog.close();});
   window.addEventListener("resize",setupCanvas);
-  updateClock();setInterval(updateClock,1000);setupCanvas();renderSealList();renderTimer();requestAnimationFrame(drawScene);
+  initializePresenceCue();updateClock();setInterval(updateClock,1000);setupCanvas();renderSealList();renderTimer();requestAnimationFrame(drawScene);
 })();
