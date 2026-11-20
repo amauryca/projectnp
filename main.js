@@ -8,30 +8,22 @@
   const ruffleContainer = $("#ruffle-container");
   const SAVE_KEY = "np-gate-09-progress-v1";
   const PLAY_SECONDS = 300;
-  const seals = [
-    { name: "The Game", label: "RECOVERED MEDIA", note: "A children's game was found cached in the gate's dispatch system. Its last three seconds are missing from the official record." },
-    { name: "Clock Drift", label: "TIME RECORD", note: "Four clocks disagree about the same arrival. The difference is stable. The explanation is not." },
-    { name: "The Missing Image", label: "VISUAL ARCHIVE", note: "One frame is absent from a sequence of historical photographs. The ground beneath it has not changed." },
-    { name: "Instrument 04", label: "3D RECONSTRUCTION", note: "A sleigh instrument was recovered with its faces turned inward. It has no visible maker's mark." },
-    { name: "Night Signal", label: "AUDIO RECORD", note: "Two voices occupy the same recording. The louder one is dated after the tape was sealed." },
-    { name: "The Fix", label: "POSITION REPORT", note: "Three bearings end at a point that does not appear on the map. All three reports name the same place." },
-    { name: "Archive Copy", label: "VERSION HISTORY", note: "The stored page changed before it was created. Its earliest version contains the most recent date." },
-    { name: "Route Loop", label: "PATH ANALYSIS", note: "The delivery path returns to its first stop. The first stop appears in the log before the campus existed." },
-    { name: "Dispatch 09", label: "LIVE TRANSMISSION", note: "The scheduled messages arrive at :30. Their recorded receipt times are always one hour earlier." },
-    { name: "Continuity", label: "FINAL RECONSTRUCTION", note: "The gate has ten seals. The station ledger has eleven names." }
-  ];
+  const puzzles = window.NP_PUZZLES;
   let progress = readProgress();
   let gamePlayer = null;
   let timerInterval = null;
   let lastTick = 0;
   let pointer = { down: false, x: 0, y: 0, yaw: -.14, pitch: -.06, targetYaw: -.14, targetPitch: -.06 };
   let width = 0, height = 0, dpr = 1, stars = [], snow = [], gateHitboxes = [];
+  let currentPuzzle = -1, doorOpen = 0;
 
   function readProgress() {
     try {
       const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "{}");
-      return { seconds: Math.max(0, Math.min(PLAY_SECONDS, Number(saved.seconds) || 0)), revealed: Boolean(saved.revealed), seals: Array.isArray(saved.seals) ? saved.seals : [] };
-    } catch { return { seconds: 0, revealed: false, seals: [] }; }
+      const revealed = Boolean(saved.revealed);
+      const solved = Array.isArray(saved.solved) ? [...new Set(saved.solved.filter(n => Number.isInteger(n) && n >= 0 && n < 10))] : [];
+      return { seconds: Math.max(0, Math.min(PLAY_SECONDS, Number(saved.seconds) || 0)), revealed, unlocked: Math.max(Number(saved.unlocked) || 0, revealed ? 1 : 0, solved.length ? Math.max(...solved) + 2 : 0), solved, hints: saved.hints && typeof saved.hints === "object" ? saved.hints : {}, fragments: Array.isArray(saved.fragments) ? saved.fragments.slice(0,10) : [], finished: Boolean(saved.finished) };
+    } catch { return { seconds: 0, revealed: false, unlocked: 0, solved: [], hints: {}, fragments: [], finished: false }; }
   }
   function saveProgress() { localStorage.setItem(SAVE_KEY, JSON.stringify(progress)); }
   function updateClock() { $("#utc-clock").textContent = new Date().toISOString().slice(11, 19) + " UTC"; }
@@ -104,10 +96,11 @@
     box(0,3.0,0,5.2,.52,.62,["#4b555b","#283239","#48545a","#67747a","#252d33"]);
     box(0,2.63,.02,3.95,.17,.54,["#171e24","#131a20","#374047","#535e64","#12181e"]);
     // Gate leaves, braces and frost-edged bars.
-    box(-1.03,1.32,.18,1.96,2.46,.18,["#202a31","#151d23","#34414a","#56646c","#12191f"]);
-    box(1.03,1.32,.18,1.96,2.46,.18,["#202a31","#151d23","#34414a","#56646c","#12191f"]);
+    doorOpen+=( (progress.finished?1:0) - doorOpen )*.025;
+    box(-1.03-doorOpen*1.35,1.32,.18,1.96,2.46,.18,["#202a31","#151d23","#34414a","#56646c","#12191f"]);
+    box(1.03+doorOpen*1.35,1.32,.18,1.96,2.46,.18,["#202a31","#151d23","#34414a","#56646c","#12191f"]);
     for(let k=0;k<7;k++){
-      const x=-1.82+k*.52;
+      const baseX=-1.82+k*.52, x=baseX+(baseX<0?-1:1)*doorOpen*1.35;
       box(x,1.34,.33,.045,2.28,.045,["#61727b","#39464d","#91a0a5","#a8b4b6","#344047"]);
       box(x,.96,.38,.1,.13,.1,["#75858b","#465157","#8d9ca2","#b8c4c7","#414d53"]);
     }
@@ -115,10 +108,10 @@
     gateHitboxes=[];
     for(let i=0;i<10;i++){
       const x=-1.58+(i%5)*.79, y=i<5?2.05:.65;
-      const ready=i===0&&progress.revealed;
-      ring(x,y,.56,.18,.027,ready?"#b9d1d8":"#71838a",i);
+      const solved=progress.solved.includes(i),lit=i<progress.unlocked;
+      ring(x,y,.56,.18,.027,solved?"#c7e1e7":lit?"#91aab3":"#596870",i);
       const p=project([x,y,.78]);
-      if(p){const r=Math.max(8,p.scale*.21);gateHitboxes[i]={minX:p.x-r,maxX:p.x+r,minY:p.y-r,maxY:p.y+r};ctx.fillStyle=ready?"#c4d9df":"#74838a";ctx.globalAlpha=ready?.92:.48;ctx.font=`${Math.max(7,Math.min(10,p.scale*5))}px IBM Plex Mono,monospace`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(String(i+1).padStart(2,"0"),p.x,p.y);ctx.globalAlpha=1;}
+      if(p){const r=Math.max(8,p.scale*.21);gateHitboxes[i]={minX:p.x-r,maxX:p.x+r,minY:p.y-r,maxY:p.y+r};ctx.fillStyle=solved?"#d8ebef":lit?"#b6cbd1":"#74838a";ctx.globalAlpha=solved ? 0.95 : lit ? 0.7 : 0.4;ctx.font=`${Math.max(7,Math.min(10,p.scale*5))}px IBM Plex Mono,monospace`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(String(i+1).padStart(2,"0"),p.x,p.y);ctx.globalAlpha=1;}
     }
     // A distant red lamp marks the sealed side of the gate.
     const lamp=project([0,2.82,.8]);if(lamp){const pulse=.5+Math.sin(now/1100)*.16;ctx.fillStyle=`rgba(164,65,59,${pulse})`;ctx.shadowColor="#aa4640";ctx.shadowBlur=11;ctx.beginPath();ctx.arc(lamp.x,lamp.y,3,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
@@ -128,19 +121,26 @@
   }
   function renderSealList() {
     const grid=$("#seal-grid");grid.replaceChildren();
-    seals.forEach((seal,i)=>{const button=document.createElement("button");button.className="seal-cell"+(i===0&&progress.revealed?" ready":"");button.textContent=String(i+1).padStart(2,"0");button.setAttribute("aria-label",`Inspect seal ${i+1}: ${seal.name}`);button.addEventListener("click",()=>openSeal(i));grid.append(button);});
-    const count=progress.revealed?"01":"00";$("#seal-status").textContent=`SEALS: ${count} / 10`;$("#seal-count").textContent=`${count}—10`;$("#gate-state").textContent=progress.revealed?"ONE SEAL RELEASED":"SEALED";
+    puzzles.forEach((puzzle,i)=>{const button=document.createElement("button");const solved=progress.solved.includes(i),available=i<progress.unlocked;button.className="seal-cell"+(available?" ready":"")+(solved?" solved":"")+(available&&!solved?" available":"");button.textContent=String(i+1).padStart(2,"0");button.setAttribute("aria-label",`${solved?"Solved":available?"Available":"Locked"} puzzle ${i+1}: ${puzzle.name}`);button.addEventListener("click",()=>openSeal(i));grid.append(button);});
+    const count=String(progress.solved.length).padStart(2,"0");$("#seal-status").textContent=`SEALS: ${count} / 10`;$("#seal-count").textContent=`${count}—10`;$("#gate-state").textContent=progress.finished?"OPEN / RECORDING":""+(progress.solved.length?`${String(progress.solved.length).padStart(2,"0")} SEALS RELEASED`:progress.revealed?"FIRST SEAL RELEASED":"SEALED");
   }
   function openSeal(i) {
-    const seal=seals[i];$("#seal-kicker").textContent=`SEAL ${String(i+1).padStart(2,"0")} / ${seal.label}`;$("#seal-heading").textContent=seal.name;$("#seal-description").textContent=seal.note;
-    const ready=i===0&&progress.revealed;
-    $("#seal-record").textContent=ready?"Recovered after active playback: ‘THE GAME DID NOT END. IT NOTICED YOU.’ The seal is warm." : i===0 ? "No data recovered. The archive tape may contain the missing record." : "The record has not been recovered. The seal is locked from the other side.";
-    sealDialog.dataset.ready=String(ready);sealDialog.showModal();
+    const puzzle=puzzles[i],available=i<progress.unlocked,solved=progress.solved.includes(i);
+    $("#seal-kicker").textContent=`SEAL ${String(i+1).padStart(2,"0")} / ${puzzle.label}`;$("#seal-heading").textContent=puzzle.name;$("#seal-description").textContent=puzzle.note;
+    const body=$("#puzzle-body"),form=$("#puzzle-form"),hint=$("#hint-button"),record=$("#seal-record");
+    currentPuzzle=i;
+    if(!available){body.innerHTML='<div class="locked-record"><span class="locked-glyph">×</span><b>NO AUTHORIZED ENTRY</b><span>The previous seal has not released this record.</span></div>';form.hidden=true;hint.hidden=true;record.textContent="THE LOCK IS COLD.";}
+    else {
+      body.innerHTML=puzzle.html;form.hidden=solved;hint.hidden=solved;record.textContent=solved?`RECOVERED FRAGMENT: ${progress.fragments[i]||puzzle.fragment}`:"Each solved record leaves one fragment in the gate.";
+      $("#puzzle-answer").value="";$("#puzzle-feedback").textContent=solved?"SEAL ALREADY RELEASED.":"";
+      const hintCount=Number(progress.hints[i])||0;hint.textContent=hintCount>=puzzle.hints.length?"HINT FILES EXHAUSTED":`REQUEST HINT ${String(hintCount+1).padStart(2,"0")} / 0${puzzle.hints.length}`;hint.disabled=hintCount>=puzzle.hints.length;
+      initializePuzzleWidget(i,body);
+    }
+    sealDialog.showModal();
   }
   function openTape() {
     tapeDialog.showModal();document.body.classList.remove("glitched");glitchScreen.classList.remove("active");glitchScreen.setAttribute("aria-hidden","true");
-    if(progress.revealed){revealGlitch(false);return;}
-    loadRuffle();startTimer();
+    loadRuffle();if(progress.revealed){revealGlitch(false);return;}startTimer();
   }
   function loadRuffle() {
     if(gamePlayer)return;
@@ -164,7 +164,7 @@
     if(timerInterval||progress.revealed)return;lastTick=Date.now();
     timerInterval=setInterval(()=>{
       const now=Date.now();if(!document.hidden&&tapeDialog.open)progress.seconds=Math.min(PLAY_SECONDS,progress.seconds+(now-lastTick)/1000);lastTick=now;saveProgress();renderTimer();
-      if(progress.seconds>=PLAY_SECONDS){clearInterval(timerInterval);timerInterval=null;progress.revealed=true;progress.seals=[1];saveProgress();renderSealList();revealGlitch(true);}
+      if(progress.seconds>=PLAY_SECONDS){clearInterval(timerInterval);timerInterval=null;progress.revealed=true;saveProgress();renderSealList();revealGlitch(true);}
     },250);
   }
   function renderTimer() {
@@ -172,8 +172,76 @@
     $("#timer-progress").style.width=`${Math.min(100,progress.seconds/PLAY_SECONDS*100)}%`;
   }
   function revealGlitch(first) {
-    progress.revealed=true;saveProgress();renderSealList();glitchScreen.classList.add("active");glitchScreen.setAttribute("aria-hidden","false");document.body.classList.add("glitched");
+    progress.revealed=true;progress.unlocked=Math.max(progress.unlocked,1);saveProgress();renderSealList();glitchScreen.classList.add("active");glitchScreen.setAttribute("aria-hidden","false");document.body.classList.add("glitched");
     if(first){$("#transmission-card").innerHTML='<div class="transmission-header"><span>INCOMING / SOURCE: INSIDE</span><span class="rec-dot">● LIVE</span></div><p>“The game did not end. It noticed you.”</p><span class="transmission-footer">RECEIVED AT: 00:05:00</span>';}
+  }
+  function normalizedAnswer(value){return value.toUpperCase().replace(/[^A-Z0-9]/g,"");}
+  async function answerDigest(value){const data=new TextEncoder().encode(value),digest=await crypto.subtle.digest("SHA-256",data);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,"0")).join("");}
+  async function solveCurrentPuzzle(event){
+    event.preventDefault();if(currentPuzzle<0||currentPuzzle>=puzzles.length)return;
+    const puzzle=puzzles[currentPuzzle],answer=normalizedAnswer($("#puzzle-answer").value);
+    try{if(await answerDigest(answer)!==puzzle.answerHash){$("#puzzle-feedback").textContent="NO MATCH. THE SEAL REMAINS COLD.";$("#puzzle-feedback").classList.add("error");return;}}catch{$("#puzzle-feedback").textContent="SECURE SUBMISSION REQUIRES HTTPS OR LOCALHOST.";$("#puzzle-feedback").classList.add("error");return;}
+    $("#puzzle-feedback").classList.remove("error");$("#puzzle-feedback").textContent=`RECORD ACCEPTED. FRAGMENT RECOVERED: ${puzzle.fragment}`;
+    if(!progress.solved.includes(currentPuzzle))progress.solved.push(currentPuzzle);
+    progress.fragments[currentPuzzle]=puzzle.fragment;progress.unlocked=Math.max(progress.unlocked,Math.min(10,currentPuzzle+2));
+    if(currentPuzzle===9){progress.finished=true;$("#transmission-card").innerHTML='<div class="transmission-header"><span>INCOMING / GATE 09</span><span class="rec-dot">● OPEN</span></div><p>“The route was looking for its beginning. It found the side we were standing on.”</p><span class="transmission-footer">SOURCE: INSIDE · FINAL ENTRY</span>';}
+    saveProgress();renderSealList();$("#seal-record").textContent=`RECOVERED FRAGMENT: ${puzzle.fragment}`;$("#puzzle-form").hidden=true;$("#hint-button").hidden=true;
+    setTimeout(()=>{if(sealDialog.open)sealDialog.close();},1200);
+  }
+  function requestHint(){
+    const puzzle=puzzles[currentPuzzle],count=Number(progress.hints[currentPuzzle])||0;
+    if(!puzzle||count>=puzzle.hints.length)return;
+    $("#puzzle-feedback").classList.remove("error");$("#puzzle-feedback").textContent=`HINT ${count+1}: ${puzzle.hints[count]}`;
+    progress.hints[currentPuzzle]=count+1;saveProgress();
+    $("#hint-button").textContent=count+1>=puzzle.hints.length?"HINT FILES EXHAUSTED":`REQUEST HINT ${String(count+2).padStart(2,"0")} / 0${puzzle.hints.length}`;
+    $("#hint-button").disabled=count+1>=puzzle.hints.length;
+  }
+  function initializePuzzleWidget(index,body){
+    if(index===1){
+      const slider=body.querySelector("#year-slider"),years=["2008","2016","2024"];
+      slider?.addEventListener("input",()=>{const year=years[Number(slider.value)];body.querySelector("#year-readout").textContent=year;body.querySelector("#shadow-caption").textContent=`FRAME ${year} / TRACE 0${Number(slider.value)+1}`;body.querySelector("#shadow-shape").style.transform=`rotate(${[-34,0,29][Number(slider.value)]}deg)`;body.querySelector(".shadow-ground").dataset.frame=year;});
+    }
+    if(index===2){
+      const yaw=body.querySelector("#yaw-dial"),pitch=body.querySelector("#pitch-dial"),model=body.querySelector("#instrument-model"),out=body.querySelector("#instrument-output");
+      const update=()=>{const y=Number(yaw.value),p=Number(pitch.value);body.querySelector("#yaw-readout").textContent=`${y}°`;body.querySelector("#pitch-readout").textContent=`${p}°`;model.style.transform=`rotateY(${y}deg) rotateX(${p}deg)`;const aligned=Math.abs(y-142)<=2&&Math.abs(p-27)<=2;out.textContent=aligned?"NORTH":"NO SIGHTLINE";out.classList.toggle("revealed",aligned);};yaw?.addEventListener("input",update);pitch?.addEventListener("input",update);
+      let dragging=false,lastX=0,lastY=0;model?.addEventListener("pointerdown",e=>{dragging=true;lastX=e.clientX;lastY=e.clientY;model.setPointerCapture(e.pointerId);});model?.addEventListener("pointermove",e=>{if(!dragging)return;yaw.value=(Number(yaw.value)+Math.round((e.clientX-lastX)*1.4)+360)%360;pitch.value=Math.max(0,Math.min(89,Number(pitch.value)+Math.round((e.clientY-lastY)*.8)));lastX=e.clientX;lastY=e.clientY;update();});model?.addEventListener("pointerup",()=>dragging=false);update();
+    }
+    if(index===3){
+      const wave=body.querySelector("#wave-canvas"),dial=body.querySelector("#phase-dial"),out=body.querySelector("#phase-readout"),decoded=body.querySelector("#decoded-line");
+      const draw=()=>{if(!wave)return;const rect=wave.getBoundingClientRect(),scale=Math.min(window.devicePixelRatio||1,1.5);wave.width=rect.width*scale;wave.height=120*scale;const c=wave.getContext("2d");c.setTransform(scale,0,0,scale,0,0);const w=rect.width,h=120,phase=Number(dial.value)*Math.PI/180;c.clearRect(0,0,w,h);c.strokeStyle="rgba(174,193,201,.13)";c.lineWidth=1;c.beginPath();c.moveTo(0,h/2);c.lineTo(w,h/2);c.stroke();[["#82a9bb",0],["#ad5750",phase]].forEach(([color,offset])=>{c.beginPath();for(let x=0;x<w;x++){const y=h/2+Math.sin(x/w*Math.PI*8+offset)*27;if(x===0)c.moveTo(x,y);else c.lineTo(x,y)}c.strokeStyle=color;c.lineWidth=1.7;c.stroke()});const aligned=Math.abs(Number(dial.value)-180)<=2;decoded.textContent=aligned?"DO NOT ANSWER":"[NO CARRIER LOCK]";decoded.classList.toggle("revealed",aligned);};
+      dial?.addEventListener("input",()=>{out.textContent=`${dial.value}°`;draw();});
+      if(window.ResizeObserver)new ResizeObserver(draw).observe(wave);else window.addEventListener("resize",draw);
+      body.querySelector("#play-tone")?.addEventListener("click",async()=>{try{const AC=window.AudioContext||window.webkitAudioContext,ac=new AC();await ac.resume();for(const [freq,delay] of [[220,0],[330,.22]]){const osc=ac.createOscillator(),gain=ac.createGain();osc.frequency.value=freq;osc.type="sine";gain.gain.setValueAtTime(.0001,ac.currentTime+delay);gain.gain.exponentialRampToValueAtTime(.06,ac.currentTime+delay+.02);gain.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+delay+.45);osc.connect(gain).connect(ac.destination);osc.start(ac.currentTime+delay);osc.stop(ac.currentTime+delay+.48);}setTimeout(()=>ac.close(),1200);}catch{decoded.textContent="AUDIO UNAVAILABLE — USE THE WAVEFORM."}});
+      draw();
+    }
+    if(index===4){
+      const grid=body.querySelector("#campus-grid");if(grid){const letters="ABCDEFGH";for(let row=8;row>=1;row--)for(let col=0;col<8;col++){const cell=document.createElement("button");cell.type="button";cell.className="map-cell";cell.textContent=letters[col]+row;cell.setAttribute("aria-label",`Grid ${letters[col]}${row}`);cell.addEventListener("click",()=>{grid.querySelectorAll(".selected").forEach(n=>n.classList.remove("selected"));cell.classList.add("selected");let output=body.querySelector("#cell-selected");if(!output){output=document.createElement("div");output.id="cell-selected";output.className="query-result";grid.after(output);}output.textContent=`PLOTTED FIX: ${cell.textContent}`;});grid.append(cell);}}
+    }
+    if(index===5){
+      const variants=[
+        ["The first campus buildings are being planned. Ground will be broken in 1958.","PAPER COPY / DATE STAMP: 1958"],
+        ["The first campus buildings were completed in 1960. The initial class arrived that fall.","REVISED COPY / DATE STAMP: 1960"],
+        ["The first buildings had already been planned before the route was logged.","DUPLICATE / DATE STAMP: 1998"]
+      ];
+      body.querySelectorAll(".version-tab").forEach(tab=>tab.addEventListener("click",()=>{body.querySelectorAll(".version-tab").forEach(t=>t.classList.remove("active"));tab.classList.add("active");const v=variants[Number(tab.dataset.version)];body.querySelector("#version-text").textContent=`“${v[0]}”`;body.querySelector("#version-note").textContent=v[1];}));
+    }
+    if(index===6){
+      const rows=[{id:"LANTERN-04",destination:"GATE-09",variance:"+1"},{id:"BELL-12",destination:"GATE-09",variance:"0"},{id:"KEY-03",destination:"HANGAR-2",variance:"+1"},{id:"RIBBON-07",destination:"RETURN",variance:"-1"},{id:"STAR-02",destination:"GATE-09",variance:"-1"}];
+      const draw=()=>{const dest=body.querySelector("#destination-filter").value,varia=body.querySelector("#variance-filter").value;const matches=rows.filter(r=>(dest==="ALL"||r.destination===dest)&&(varia==="ALL"||r.variance===varia));body.querySelector("#inventory-table").innerHTML=`<div class="inventory-head"><span>ITEM ID</span><span>DESTINATION</span><span>VARIANCE</span></div>`+matches.map(r=>`<div class="inventory-row"><span>${r.id}</span><span>${r.destination}</span><span>${r.variance}</span></div>`).join("");body.querySelector("#query-result").textContent=`${matches.length} MATCHING RECORD${matches.length===1?"":"S"}`;};
+      body.querySelectorAll("#destination-filter,#variance-filter").forEach(el=>el.addEventListener("change",draw));draw();
+    }
+    if(index===7){
+      const route=body.querySelector("#route-sequence"),letters="ABCDE";if(route){for(let n=0;n<5;n++){const select=document.createElement("select");select.setAttribute("aria-label",`Route stop ${n+1}`);select.innerHTML='<option value="">—</option>'+[...letters].map(l=>`<option value="${l}">${l}</option>`).join("");route.append(select);}route.addEventListener("change",()=>{const value=[...route.querySelectorAll("select")].map(s=>s.value||"·").join(" → ");body.querySelector(".edge-key").textContent=`CURRENT ROUTE: ${value}  /  CHECK: C < D < B < E.`;});}
+    }
+    if(index===8){
+      const list=body.querySelector("#dispatch-list");if(list){const messages=[{time:"03:30",text:"At dawn, the route returned empty."},{time:"00:30",text:"Inside the frozen frame, a second shadow."},{time:"05:30",text:"Do not answer the last transmission."},{time:"02:30",text:"We were not at the outer gate."},{time:"01:30",text:"No entry was made from outside."},{time:"04:30",text:"Read the east-facing ledger."}];
+        function draw(){list.innerHTML=messages.map((m,i)=>{const hour=Number(m.time.slice(0,2)),received=`${String((hour+23)%24).padStart(2,"0")}:30`;return `<div class="dispatch-card"><span class="dispatch-index">${String(i+1).padStart(2,"0")}</span><span class="dispatch-message">SENT ${m.time} / RECEIVED ${received}<b>${m.text}</b></span><span class="dispatch-controls"><button type="button" data-move="-1" data-index="${i}" aria-label="Move up">↑</button><button type="button" data-move="1" data-index="${i}" aria-label="Move down">↓</button></span></div>`}).join("");list.querySelectorAll("button").forEach(btn=>btn.addEventListener("click",()=>{const i=Number(btn.dataset.index),j=i+Number(btn.dataset.move);if(j<0||j>=messages.length)return;[messages[i],messages[j]]=[messages[j],messages[i]];draw();}));}
+        draw();
+      }
+    }
+    if(index===9){
+      const tray=body.querySelector("#fragment-tray");if(tray){tray.innerHTML=progress.fragments.slice(0,9).map((f,i)=>`<span class="fragment-chip ${f?"found":"missing"}"><small>${String(i+1).padStart(2,"0")}</small>${f||"?"}</span>`).join("");}
+    }
   }
   function closeTape(){if(tapeDialog.open)tapeDialog.close();}
   function setGateTarget(i){
@@ -188,7 +256,8 @@
   $("#close-tape").addEventListener("click",closeTape);
   $("#ack-glitch").addEventListener("click",()=>{closeTape();document.body.classList.remove("glitched");});
   $("#close-seal").addEventListener("click",()=>sealDialog.close());
-  $("#seal-action").addEventListener("click",()=>{sealDialog.close();openTape();});
+  $("#puzzle-form").addEventListener("submit",solveCurrentPuzzle);
+  $("#hint-button").addEventListener("click",requestHint);
   tapeDialog.addEventListener("click",e=>{if(e.target===tapeDialog)closeTape();});
   sealDialog.addEventListener("click",e=>{if(e.target===sealDialog)sealDialog.close();});
   window.addEventListener("resize",setupCanvas);
