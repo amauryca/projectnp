@@ -105,3 +105,12 @@
 .seal-cell.solved:before{content:"✓";position:absolute;right:4px;bottom:2px;color:#a7c7d0;font:8px var(--mono)}
 .puzzle-form[hidden],.hint-button[hidden]{display:none!important}
 @media(max-width:620px){.seal-dialog{max-height:96vh}.seal-card{padding:24px 14px}.puzzle-body{padding:12px 9px}.artifact-head{font-size:7px}.artifact-copy{font-size:9px!important}.evidence-table{font-size:7px}.evidence-table>div,.inventory-head,.inventory-row{gap:4px;padding:7px 5px}.bearing-note span{font-size:6px}.dispatch-card{grid-template-columns:17px 1fr 42px;padding:6px 4px}.dispatch-message{font-size:6px}.dispatch-message b{font-size:8px}.route-sequence{gap:3px}.route-sequence select{padding:6px 1px;font-size:8px}.answer-row{flex-wrap:wrap}.answer-row input{height:40px;flex-basis:100%}.puzzle-form .small-button{width:100%;justify-content:center}.fragment-tray{gap:2px}.fragment-chip{min-height:45px;font-size:12px}}
+
+/* Larger inspection view for the 3D gate */
+.layout{max-width:1680px;grid-template-columns:minmax(0,1.75fr) minmax(300px,.78fr);margin-top:24px}
+.scene-panel{height:clamp(680px,78svh,920px);min-height:680px}
+.terminal-panel{min-height:680px}
+.voice-toggle{border:1px solid rgba(173,190,201,.2);background:transparent;color:#8d9da5;padding:5px 7px;font:8px var(--mono);letter-spacing:.1em;cursor:pointer}
+.voice-toggle:hover,.voice-toggle:focus-visible{border-color:#8297a2;color:#c5d1d5;outline:none}
+@media(max-width:950px){.layout{grid-template-columns:1fr}.scene-panel{height:clamp(650px,76svh,860px);min-height:650px}.terminal-panel{min-height:510px}}
+@media(max-width:620px){.header-state{gap:7px}.header-state time{display:none}.voice-toggle{font-size:7px;padding:4px 5px}.scene-panel{height:70svh;min-height:540px;max-height:760px}.terminal-panel{min-height:510px}}
