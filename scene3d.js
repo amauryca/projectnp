@@ -206,7 +206,7 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
   const tendrils = [];
   const tendrilMat = new THREE.MeshStandardMaterial({ color: 0x342226, emissive: 0x170809, emissiveIntensity: .55, roughness: .82 });
   for (let i = 2; i < GATE_COUNT; i++) {
-    const z = -i * GATE_SPACING;
+    const z = -(i + 1) * GATE_SPACING;
     for (const side of [-1, 1]) {
       const curve = new THREE.CatmullRomCurve3([
         new THREE.Vector3(side * 4.9, .1, z + 1.2),
@@ -244,7 +244,7 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
   function setRegisterActive(active) { registerActive = Boolean(active); }
   function setFlashlight(active) {
     flashlightOn = Boolean(active);
-    lampBeam.intensity = flashlightOn ? 34 : 0;
+    lampBeam.intensity = flashlightOn ? 58 : 0;
     lampBeam.angle = flashlightOn ? .31 : .01;
     lampBeam.distance = 36;
   }

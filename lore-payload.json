@@ -1,11 +1,11 @@
 {
-  "id": "NP-1998-12-24-CONTINUITY-BREACH",
-  "trigger": "300 seconds of visible, active tape playback",
+  "id": "NP-1998-12-24-SURVEY-00",
+  "trigger": "manual recovery after the missing gate tooth is returned",
   "transmission": [
-    "THE GAME DID NOT END.",
-    "IT NOTICED YOU."
+    "SURVEY 00 REQUIRED",
+    "RETURN THE TOOTH TO THE REGISTER"
   ],
-  "source": "INSIDE",
-  "receivedAt": "00:05:00",
+  "source": "ACCESS CHAMBER",
+  "receivedAt": "UNRECORDED",
   "gateSealUnlocked": 1
 }
