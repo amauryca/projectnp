@@ -3,45 +3,42 @@
   const canvas = $("#gate-scene");
   const tapeDialog = $("#tape-dialog");
   const sealDialog = $("#seal-dialog");
-  const glitchScreen = $("#glitch-screen");
   const ruffleContainer = $("#ruffle-container");
-  const warningAudio = $("#warning-audio");
   const escalatingAudio = $("#escalating-audio");
   const SAVE_KEY = "np-gate-09-progress-v1";
-  const PLAY_SECONDS = 300;
-  const IDLE_CUE_MS = 15000;
   const AWAY_CUE_MS = 30000;
-  const VOICE_KEY = "np-gate-09-voice-v1";
-  let voiceEnabled = localStorage.getItem(VOICE_KEY) !== "off";
-  let lastActivityAt = Date.now();
+  const AUDIO_KEY = "np-gate-09-audio-v1";
+  let audioEnabled = localStorage.getItem(AUDIO_KEY) !== "off";
   let awaySince = document.hidden ? Date.now() : null;
-  let lastLongCueAt = 0;
-  let idleCueTimer = null;
-  let audioContext = null, warningBus = null, escalationBus = null, cueRun = 0;
+  let awayTimer = null, awayCueStarted = false, awayCueComplete = false, awayCueFailed = false;
+  let audioContext = null, escalationBus = null, cueRun = 0;
   const puzzles = window.NP_PUZZLES;
   let progress = readProgress();
   let gamePlayer = null;
-  let timerInterval = null;
-  let lastTick = 0;
   let currentPuzzle = -1;
   let sceneController = null;
 
   function readProgress() {
     try {
       const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "{}");
-      const revealed = Boolean(saved.revealed);
       const solved = Array.isArray(saved.solved) ? [...new Set(saved.solved.filter(n => Number.isInteger(n) && n >= 0 && n < 10))] : [];
-      return { seconds: Math.max(0, Math.min(PLAY_SECONDS, Number(saved.seconds) || 0)), revealed, unlocked: Math.max(Number(saved.unlocked) || 0, revealed ? 1 : 0, solved.length ? Math.max(...solved) + 2 : 0), solved, hints: saved.hints && typeof saved.hints === "object" ? saved.hints : {}, fragments: Array.isArray(saved.fragments) ? saved.fragments.slice(0,10) : [], finished: Boolean(saved.finished) };
-    } catch { return { seconds: 0, revealed: false, unlocked: 0, solved: [], hints: {}, fragments: [], finished: false }; }
+      const inventory = Array.isArray(saved.inventory) ? [...new Set(saved.inventory.filter(item => ["flashlight", "gate_tooth"].includes(item)))] : [];
+      return {
+        registerActivated: Boolean(saved.registerActivated), inventory,
+        unlocked: saved.registerActivated ? Math.max(Number(saved.unlocked) || 0, solved.length ? Math.max(...solved) + 1 : 1) : 0,
+        solved, hints: saved.hints && typeof saved.hints === "object" ? saved.hints : {},
+        fragments: Array.isArray(saved.fragments) ? saved.fragments.slice(0,10) : [], finished: Boolean(saved.finished)
+      };
+    } catch { return { registerActivated: false, inventory: [], unlocked: 0, solved: [], hints: {}, fragments: [], finished: false }; }
   }
   function saveProgress() { localStorage.setItem(SAVE_KEY, JSON.stringify(progress)); }
   function updateClock() { $("#utc-clock").textContent = new Date().toISOString().slice(11, 19) + " UTC"; }
 
-  function updateVoiceControl() {
-    const button = $("#voice-toggle");
+  function updateAudioControl() {
+    const button = $("#audio-toggle");
     if (!button) return;
-    button.textContent = `VOICE: ${voiceEnabled ? "ON" : "OFF"}`;
-    button.setAttribute("aria-pressed", String(voiceEnabled));
+    button.textContent = `AUDIO: ${audioEnabled ? "ON" : "OFF"}`;
+    button.setAttribute("aria-pressed", String(audioEnabled));
   }
   function distortionCurve(amount) {
     const samples = 512, curve = new Float32Array(samples), drive = 1 + amount * 18, normalizer = Math.tanh(drive);
@@ -52,159 +49,156 @@
     return curve;
   }
   function createAudioGraph() {
-    if (audioContext) return { warningBus, escalationBus };
+    if (audioContext) return escalationBus;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass || !warningAudio || !escalatingAudio) return null;
+    if (!AudioContextClass || !escalatingAudio) return null;
     try {
       audioContext = new AudioContextClass();
-      const warningSource = audioContext.createMediaElementSource(warningAudio);
-      const warningGain = audioContext.createGain();
-      warningSource.connect(warningGain).connect(audioContext.destination);
-      warningBus = { gain: warningGain };
-      const escalationSource = audioContext.createMediaElementSource(escalatingAudio);
+      const source = audioContext.createMediaElementSource(escalatingAudio);
       const shaper = audioContext.createWaveShaper();
       const filter = audioContext.createBiquadFilter();
-      const escalationGain = audioContext.createGain();
-      shaper.oversample = "4x";
-      shaper.curve = distortionCurve(0);
+      const gain = audioContext.createGain();
+      shaper.oversample = "4x"; shaper.curve = distortionCurve(0);
       filter.type = "lowpass"; filter.frequency.value = 11000;
-      escalationSource.connect(shaper).connect(filter).connect(escalationGain).connect(audioContext.destination);
-      escalationBus = { gain: escalationGain, shaper, filter };
-      return { warningBus, escalationBus };
-    } catch {
-      audioContext = null; warningBus = null; escalationBus = null;
-      return null;
-    }
+      source.connect(shaper).connect(filter).connect(gain).connect(audioContext.destination);
+      escalationBus = { gain, shaper, filter };
+      return escalationBus;
+    } catch { audioContext = null; escalationBus = null; return null; }
   }
   function primeAudio() {
-    if (!voiceEnabled) return;
+    if (!audioEnabled) return;
     createAudioGraph();
     if (audioContext?.state === "suspended") audioContext.resume().catch(() => {});
   }
   function stopAudioCues() {
     cueRun++;
-    [warningAudio, escalatingAudio].forEach(audio => {
-      if (!audio) return;
-      audio.pause(); audio.currentTime = 0; audio.playbackRate = 1;
-    });
-    if (audioContext && warningBus) warningBus.gain.gain.setTargetAtTime(0, audioContext.currentTime, .04);
+    if (escalatingAudio) { escalatingAudio.pause(); escalatingAudio.currentTime = 0; escalatingAudio.playbackRate = 1; }
     if (audioContext && escalationBus) escalationBus.gain.gain.setTargetAtTime(0, audioContext.currentTime, .04);
-  }
-  function playFirstWarning() {
-    if (!voiceEnabled || !warningAudio) return;
-    stopAudioCues(); primeAudio();
-    warningAudio.currentTime = 0; warningAudio.volume = audioContext && warningBus ? 1 : 0.13;
-    if (audioContext && warningBus) {
-      const now = audioContext.currentTime;
-      warningBus.gain.gain.cancelScheduledValues(now);
-      warningBus.gain.gain.setValueAtTime(.12, now);
-    }
-    warningAudio.play().catch(() => {});
   }
   const waitForAudio = (audio, run, ms) => new Promise(resolve => {
     let done = false;
-    const finish = () => {
-      if (done) return; done = true;
-      clearTimeout(timer); audio.removeEventListener("ended", finish); resolve();
-    };
+    const finish = () => { if (done) return; done = true; clearTimeout(timer); audio.removeEventListener("ended", finish); resolve(); };
     const timer = setTimeout(finish, ms);
     audio.addEventListener("ended", finish, { once: true });
     if (run !== cueRun) finish();
   });
-  async function playEscalatingWarning() {
-    if (!voiceEnabled || !escalatingAudio) return;
+  async function playEscalatingWarning(onStarted = () => {}, cycle = 0) {
+    if (!audioEnabled || !escalatingAudio) return false;
     stopAudioCues(); primeAudio();
     const run = cueRun;
-    const gainStages = [[.07,.14],[.13,.24],[.22,.39],[.36,.56]];
-    const distortionStages = [[.025,.07],[.09,.17],[.2,.32],[.36,.56]];
+    const rise = Math.min(.28, cycle * .035);
+    const gainStages = [[.07,.14],[.13,.24],[.22,.39],[.36,.56]].map(([a,b]) => [Math.min(.45,a+rise*.45),Math.min(.86,b+rise)]);
+    const distortionStages = [[.025,.07],[.09,.17],[.2,.32],[.36,.56]].map(([a,b]) => [Math.min(.45,a+rise),Math.min(.82,b+rise*1.25)]);
     const duration = Number.isFinite(escalatingAudio.duration) && escalatingAudio.duration > 0 ? escalatingAudio.duration : 3.4;
     for (let i = 0; i < gainStages.length; i++) {
-      if (run !== cueRun || !voiceEnabled) return;
-      escalatingAudio.currentTime = 0;
-      escalatingAudio.playbackRate = 1 - i * .025;
-      const now = audioContext?.currentTime || 0;
-      const [from, to] = gainStages[i], [soft, harsh] = distortionStages[i];
+      if (run !== cueRun || !audioEnabled) return false;
+      escalatingAudio.currentTime = 0; escalatingAudio.playbackRate = 1 - i * .025;
+      const now = audioContext?.currentTime || 0, [from,to] = gainStages[i], [soft,harsh] = distortionStages[i];
       escalatingAudio.volume = audioContext && escalationBus ? 1 : to;
       if (audioContext && escalationBus) {
         const gain = escalationBus.gain.gain;
-        gain.cancelScheduledValues(now);
-        gain.setValueAtTime(from, now);
-        gain.linearRampToValueAtTime(to, now + duration);
+        gain.cancelScheduledValues(now); gain.setValueAtTime(from,now); gain.linearRampToValueAtTime(to,now+duration);
         escalationBus.shaper.curve = distortionCurve(soft);
         escalationBus.filter.frequency.cancelScheduledValues(now);
-        escalationBus.filter.frequency.setValueAtTime(10000 - i * 1300, now);
-        escalationBus.filter.frequency.linearRampToValueAtTime(7600 - i * 1250, now + duration);
-        // Increase the distortion once more halfway through each pass.
-        setTimeout(() => { if (run === cueRun && escalationBus) escalationBus.shaper.curve = distortionCurve(harsh); }, duration * 500);
+        escalationBus.filter.frequency.setValueAtTime(10000-i*1300,now);
+        escalationBus.filter.frequency.linearRampToValueAtTime(7600-i*1250,now+duration);
+        setTimeout(()=>{if(run===cueRun&&escalationBus)escalationBus.shaper.curve=distortionCurve(harsh);},duration*500);
       }
-      try { await escalatingAudio.play(); } catch { return; }
-      await waitForAudio(escalatingAudio, run, duration * 1000 + 250);
+      try { await escalatingAudio.play(); onStarted(); }
+      catch { return false; }
+      await waitForAudio(escalatingAudio,run,duration*1000+250);
       escalatingAudio.pause();
-      if (run !== cueRun || !voiceEnabled) return;
-      if (i < gainStages.length - 1) await new Promise(resolve => setTimeout(resolve, 380));
+      if(run!==cueRun||!audioEnabled)return false;
+      if(i<gainStages.length-1)await new Promise(resolve=>setTimeout(resolve,380));
     }
-    if (run === cueRun) {
-      escalatingAudio.playbackRate = 1;
-      if (audioContext && escalationBus) {
-        escalationBus.gain.gain.setTargetAtTime(0, audioContext.currentTime, .18);
-        escalationBus.shaper.curve = distortionCurve(0);
-        escalationBus.filter.frequency.setTargetAtTime(11000, audioContext.currentTime, .18);
+    if(run===cueRun){
+      escalatingAudio.playbackRate=1;
+      if(audioContext&&escalationBus){
+        escalationBus.gain.gain.setTargetAtTime(0,audioContext.currentTime,.18);
+        escalationBus.shaper.curve=distortionCurve(0);
+        escalationBus.filter.frequency.setTargetAtTime(11000,audioContext.currentTime,.18);
       }
     }
+    return true;
   }
-  function scheduleIdleCue() {
-    clearTimeout(idleCueTimer);
-    if (document.hidden) return;
-    const remaining = Math.max(0, IDLE_CUE_MS - (Date.now() - lastActivityAt));
-    idleCueTimer = setTimeout(() => {
-      if (!document.hidden && Date.now() - lastActivityAt >= IDLE_CUE_MS) playFirstWarning();
-    }, remaining);
-  }
-  function noteActivity() {
-    primeAudio();
-    lastActivityAt = Date.now();
-    if (!document.hidden) scheduleIdleCue();
+  function noteActivity() { primeAudio(); }
+  async function runAwayCue() {
+    let cycle = 0;
+    while (awaySince !== null && audioEnabled) {
+      const completed = await playEscalatingWarning(() => { awayCueStarted = true; }, cycle);
+      awayCueComplete = completed; awayCueFailed = !completed;
+      if (!completed || awaySince === null) return;
+      cycle++;
+      await new Promise(resolve => setTimeout(resolve, 15000));
+    }
   }
   function markAway() {
-    if (awaySince === null) awaySince = Date.now();
-    clearTimeout(idleCueTimer);
+    if (awaySince !== null) return;
+    awaySince = Date.now(); awayCueStarted = false; awayCueComplete = false; awayCueFailed = false;
+    clearTimeout(awayTimer);
+    awayTimer = setTimeout(() => { if (awaySince !== null && !awayCueStarted && audioEnabled) runAwayCue(); }, AWAY_CUE_MS);
   }
   function returnToPage() {
     const awayDuration = awaySince === null ? 0 : Date.now() - awaySince;
-    awaySince = null;
-    if (awayDuration >= AWAY_CUE_MS && Date.now() - lastLongCueAt >= 90000) {
-      lastLongCueAt = Date.now();
-      playEscalatingWarning();
-    }
+    clearTimeout(awayTimer); awayTimer = null; awaySince = null;
     primeAudio();
-    lastActivityAt = Date.now();
-    scheduleIdleCue();
+    if (awayDuration >= AWAY_CUE_MS && audioEnabled && (!awayCueStarted || awayCueFailed || (!awayCueComplete && escalatingAudio?.paused))) {
+      const cycle = Math.floor(Math.max(0, awayDuration - AWAY_CUE_MS) / 60000);
+      playEscalatingWarning(() => { awayCueStarted = true; }, cycle).then(done => { awayCueComplete = done; awayCueFailed = !done; });
+    }
   }
   function initializePresenceCue() {
-    const voiceButton = $("#voice-toggle");
-    updateVoiceControl();
-    voiceButton?.addEventListener("click", () => {
-      voiceEnabled = !voiceEnabled;
-      localStorage.setItem(VOICE_KEY, voiceEnabled ? "on" : "off");
-      if (!voiceEnabled) stopAudioCues();
-      updateVoiceControl();
-      noteActivity();
+    const audioButton = $("#audio-toggle");
+    updateAudioControl();
+    audioButton?.addEventListener("click", () => {
+      audioEnabled = !audioEnabled; localStorage.setItem(AUDIO_KEY,audioEnabled?"on":"off");
+      if(!audioEnabled)stopAudioCues(); else primeAudio();
+      updateAudioControl();
     });
-    ["pointermove", "pointerdown", "keydown", "touchstart", "wheel", "click"].forEach(type => {
-      window.addEventListener(type, noteActivity, { passive: type !== "keydown" });
-    });
-    document.addEventListener("visibilitychange", () => document.hidden ? markAway() : returnToPage());
-    window.addEventListener("blur", markAway);
-    window.addEventListener("focus", () => { if (!document.hidden) returnToPage(); });
-    if (document.hidden) markAway(); else scheduleIdleCue();
+    ["pointerdown","keydown","touchstart","click"].forEach(type=>window.addEventListener(type,noteActivity,{passive:type!=="keydown"}));
+    document.addEventListener("visibilitychange",()=>document.hidden?markAway():returnToPage());
+    window.addEventListener("blur",markAway);
+    window.addEventListener("focus",()=>{if(!document.hidden)returnToPage();});
+    if(document.hidden)markAway();
   }
 
+  function inventoryHas(item) { return progress.inventory.includes(item); }
+  function renderInventory() {
+    const list=$("#inventory-items");if(!list)return;list.replaceChildren();
+    const items=[{id:"flashlight",name:"HAND LAMP",detail:"Beam: focused"},{id:"gate_tooth",name:"GATE TOOTH",detail:"Brass / transit assembly"}];
+    items.forEach(item=>{const found=inventoryHas(item.id),row=document.createElement("div");row.className=`inventory-item${found?" found":""}`;const text=document.createElement("span");text.innerHTML=`<b>${item.name}</b><small>${found?item.detail:"NOT RECOVERED"}</small>`;row.append(text);
+      if(item.id==="flashlight"){const toggle=document.createElement("button");toggle.type="button";toggle.className="inventory-use";toggle.textContent=sceneController?.flashlightOn?"LAMP ON":"USE LAMP";toggle.disabled=!found;toggle.setAttribute("aria-pressed",String(Boolean(sceneController?.flashlightOn)));toggle.addEventListener("click",()=>{const on=!sceneController?.flashlightOn;sceneController?.setFlashlight(on);toggle.textContent=on?"LAMP ON":"USE LAMP";toggle.setAttribute("aria-pressed",String(on));});row.append(toggle);}
+      else {const state=document.createElement("span");state.className="inventory-state";state.textContent=found?"SECURED":"—";row.append(state);}list.append(row);
+    });
+  }
+  function onSceneItemFound(item) {
+    if(!["flashlight","gate_tooth"].includes(item)||inventoryHas(item))return;
+    progress.inventory.push(item);
+    if(item==="flashlight")sceneController?.setFlashlight(true);
+    saveProgress();renderInventory();renderSealList();
+    const feedback=$("#survey-status");feedback.textContent=item==="flashlight"?"HAND LAMP RECOVERED — USE IT TO SWEEP THE GATE":"GATE TOOTH RECOVERED — SEAL REGISTER ENGAGED";
+    if(item==="gate_tooth"&&inventoryHas("flashlight")){
+      progress.registerActivated=true;progress.unlocked=Math.max(progress.unlocked,1);saveProgress();
+      sceneController?.setRegisterActive(true);renderSealList();
+      feedback.textContent="REGISTER ACTIVE — FIRST ROUTE AVAILABLE";
+      const note=$("#transmission-card");note.innerHTML='<div class="transmission-header"><span>INCOMING / SURVEY 00</span><span class="rec-dot">● LIVE</span></div><p>“A tooth is missing. The gate will remember the hand that returns it.”</p><span class="transmission-footer">SOURCE: ACCESS CHAMBER</span>';
+      const recover=$("#recover-button");recover.classList.add("ready-pulse");setTimeout(()=>recover.classList.remove("ready-pulse"),1600);
+    }
+  }
+  function onSceneFocusItem(item) {
+    const prompt=$("#scene-prompt");if(!prompt)return;
+    if(!item){prompt.classList.remove("visible");return;}
+    prompt.textContent=item==="flashlight"?"RECOVER HAND LAMP · CLICK":"GATE TOOTH REVEALED · PRESS E TO TAKE";
+    prompt.classList.add("visible");
+  }
   function setupCanvas() { sceneController?.resize(); }
   async function initializeThreeScene() {
     try {
       const { createGateScene } = await import("./scene3d.js");
-      sceneController = createGateScene(canvas, index => openSeal(index));
+      sceneController = createGateScene(canvas, index => openSeal(index), onSceneItemFound, onSceneFocusItem);
       sceneController.setSolvedCount(progress.solved.length, progress.finished);
+      sceneController.setRegisterActive(progress.registerActivated);
+      sceneController.setFlashlight(inventoryHas("flashlight"));
     } catch (error) {
       const message = document.createElement("div");
       message.className = "scene-error";
@@ -216,10 +210,14 @@
   function renderSealList() {
     sceneController?.setSolvedCount(progress.solved.length, progress.finished);
     const grid=$("#seal-grid");grid.replaceChildren();
-    puzzles.forEach((puzzle,i)=>{const button=document.createElement("button");const solved=progress.solved.includes(i),available=i<progress.unlocked;button.className="seal-cell"+(available?" ready":"")+(solved?" solved":"")+(available&&!solved?" available":"");button.textContent=String(i+1).padStart(2,"0");button.setAttribute("aria-label",`${solved?"Solved":available?"Available":"Locked"} puzzle ${i+1}: ${puzzle.name}`);button.addEventListener("click",()=>openSeal(i));grid.append(button);});
-    const count=String(progress.solved.length).padStart(2,"0");$("#seal-status").textContent=`SEALS: ${count} / 10`;$("#seal-count").textContent=`${count}—10`;$("#gate-state").textContent=progress.finished?"OPEN / RECORDING":""+(progress.solved.length?`${String(progress.solved.length).padStart(2,"0")} SEALS RELEASED`:progress.revealed?"FIRST SEAL RELEASED":"SEALED");
+    puzzles.forEach((puzzle,i)=>{const button=document.createElement("button");const solved=progress.solved.includes(i),available=progress.registerActivated&&i<progress.unlocked;button.className="seal-cell"+(available?" ready":"")+(solved?" solved":"")+(available&&!solved?" available":"");button.textContent=String(i+1).padStart(2,"0");button.disabled=!available;button.setAttribute("aria-label",`${solved?"Solved":available?"Available":"Locked"} puzzle ${i+1}: ${puzzle.name}`);button.addEventListener("click",()=>openSeal(i));grid.append(button);});
+    const count=String(progress.solved.length).padStart(2,"0");$("#seal-status").textContent=`SEALS: ${count} / 10`;$("#seal-count").textContent=`${count}—10`;$("#gate-state").textContent=progress.finished?"OPEN / RECORDING":progress.registerActivated?(progress.solved.length?`${String(progress.solved.length).padStart(2,"0")} SEALS RELEASED`:"REGISTER ACTIVE"):"SURVEY REQUIRED";
+    renderInventory();
+    const recover=$("#recover-button");recover.disabled=!progress.registerActivated;recover.setAttribute("aria-disabled",String(!progress.registerActivated));
+    $("#survey-status").textContent=progress.registerActivated?"REGISTER ACTIVE — FIRST ROUTE AVAILABLE":inventoryHas("gate_tooth")?"TOOTH RECOVERED — REGISTER READY":inventoryHas("flashlight")?"SWEEP THE FIRST GATE WITH THE LAMP":"SURVEY THE CHAMBER; RECOVER THE LAMP";
   }
   function openSeal(i) {
+    if(!progress.registerActivated)return;
     const puzzle=puzzles[i],available=i<progress.unlocked,solved=progress.solved.includes(i);
     $("#seal-kicker").textContent=`SEAL ${String(i+1).padStart(2,"0")} / ${puzzle.label}`;$("#seal-heading").textContent=puzzle.name;$("#seal-description").textContent=puzzle.note;
     const body=$("#puzzle-body"),form=$("#puzzle-form"),hint=$("#hint-button"),record=$("#seal-record");
@@ -234,8 +232,8 @@
     sealDialog.showModal();
   }
   function openTape() {
-    tapeDialog.showModal();document.body.classList.remove("glitched");glitchScreen.classList.remove("active");glitchScreen.setAttribute("aria-hidden","true");
-    loadRuffle();if(progress.revealed){revealGlitch(false);return;}startTimer();
+    if(!progress.registerActivated)return;
+    tapeDialog.showModal();loadRuffle();
   }
   function loadRuffle() {
     if(gamePlayer)return;
@@ -255,33 +253,19 @@
     const error=document.createElement("div");error.id="player-error";error.className="player-error";error.innerHTML='<span class="eyebrow">PLAYER COULD NOT INITIALIZE</span><p>The recording is available as a direct file. Try another browser or use the local download.</p><a href="assets/christmas-cat-17945-lore.swf" download>DOWNLOAD RECOVERED MEDIA ↗</a>';
     ruffleContainer.replaceChildren(error);
   }
-  function startTimer() {
-    if(timerInterval||progress.revealed)return;lastTick=Date.now();
-    timerInterval=setInterval(()=>{
-      const now=Date.now();if(!document.hidden&&tapeDialog.open)progress.seconds=Math.min(PLAY_SECONDS,progress.seconds+(now-lastTick)/1000);lastTick=now;saveProgress();renderTimer();
-      if(progress.seconds>=PLAY_SECONDS){clearInterval(timerInterval);timerInterval=null;progress.revealed=true;saveProgress();renderSealList();revealGlitch(true);}
-    },250);
-  }
-  function renderTimer() {
-    const s=Math.floor(progress.seconds),m=Math.floor(s/60),sec=s%60;$("#play-timer").textContent=`${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")} / 05:00`;
-    $("#timer-progress").style.width=`${Math.min(100,progress.seconds/PLAY_SECONDS*100)}%`;
-  }
-  function revealGlitch(first) {
-    progress.revealed=true;progress.unlocked=Math.max(progress.unlocked,1);saveProgress();renderSealList();glitchScreen.classList.add("active");glitchScreen.setAttribute("aria-hidden","false");document.body.classList.add("glitched");
-    if(first){$("#transmission-card").innerHTML='<div class="transmission-header"><span>INCOMING / SOURCE: INSIDE</span><span class="rec-dot">● LIVE</span></div><p>“The game did not end. It noticed you.”</p><span class="transmission-footer">RECEIVED AT: 00:05:00</span>';}
-  }
   function normalizedAnswer(value){return value.toUpperCase().replace(/[^A-Z0-9]/g,"");}
   async function answerDigest(value){const data=new TextEncoder().encode(value),digest=await crypto.subtle.digest("SHA-256",data);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,"0")).join("");}
   async function solveCurrentPuzzle(event){
     event.preventDefault();if(currentPuzzle<0||currentPuzzle>=puzzles.length)return;
     const puzzle=puzzles[currentPuzzle],answer=normalizedAnswer($("#puzzle-answer").value);
     try{if(await answerDigest(answer)!==puzzle.answerHash){$("#puzzle-feedback").textContent="NO MATCH. THE SEAL REMAINS COLD.";$("#puzzle-feedback").classList.add("error");return;}}catch{$("#puzzle-feedback").textContent="SECURE SUBMISSION REQUIRES HTTPS OR LOCALHOST.";$("#puzzle-feedback").classList.add("error");return;}
+    sealDialog.classList.add("resolving");
     $("#puzzle-feedback").classList.remove("error");$("#puzzle-feedback").textContent=`RECORD ACCEPTED. FRAGMENT RECOVERED: ${puzzle.fragment}`;
     if(!progress.solved.includes(currentPuzzle))progress.solved.push(currentPuzzle);
     progress.fragments[currentPuzzle]=puzzle.fragment;progress.unlocked=Math.max(progress.unlocked,Math.min(10,currentPuzzle+2));
     if(currentPuzzle===9){progress.finished=true;$("#transmission-card").innerHTML='<div class="transmission-header"><span>INCOMING / GATE 09</span><span class="rec-dot">● OPEN</span></div><p>“The route was looking for its beginning. It found the side we were standing on.”</p><span class="transmission-footer">SOURCE: INSIDE · FINAL ENTRY</span>';}
     saveProgress();renderSealList();$("#seal-record").textContent=`RECOVERED FRAGMENT: ${puzzle.fragment}`;$("#puzzle-form").hidden=true;$("#hint-button").hidden=true;
-    setTimeout(()=>{if(sealDialog.open)sealDialog.close();},1200);
+    setTimeout(()=>{sealDialog.classList.remove("resolving");if(sealDialog.open)sealDialog.close();},950);
   }
   function requestHint(){
     const puzzle=puzzles[currentPuzzle],count=Number(progress.hints[currentPuzzle])||0;
@@ -341,12 +325,11 @@
   function closeTape(){if(tapeDialog.open)tapeDialog.close();}
   $("#recover-button").addEventListener("click",openTape);
   $("#close-tape").addEventListener("click",closeTape);
-  $("#ack-glitch").addEventListener("click",()=>{closeTape();document.body.classList.remove("glitched");});
   $("#close-seal").addEventListener("click",()=>sealDialog.close());
   $("#puzzle-form").addEventListener("submit",solveCurrentPuzzle);
   $("#hint-button").addEventListener("click",requestHint);
   tapeDialog.addEventListener("click",e=>{if(e.target===tapeDialog)closeTape();});
   sealDialog.addEventListener("click",e=>{if(e.target===sealDialog)sealDialog.close();});
   window.addEventListener("resize",setupCanvas);
-  initializePresenceCue();updateClock();setInterval(updateClock,1000);setupCanvas();renderSealList();renderTimer();initializeThreeScene();
+  initializePresenceCue();updateClock();setInterval(updateClock,1000);setupCanvas();renderSealList();renderInventory();initializeThreeScene();
 })();

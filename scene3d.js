@@ -50,7 +50,7 @@ function createNumberTexture(number) {
   return texture;
 }
 
-export function createGateScene(canvas, onSelect) {
+export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItemFocus = () => {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
   renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
@@ -117,7 +117,7 @@ export function createGateScene(canvas, onSelect) {
 
   function makeGate(index) {
     const group = new THREE.Group();
-    group.position.z = -index * GATE_SPACING;
+    group.position.z = -(index + 1) * GATE_SPACING;
     scene.add(group);
     addBox(group, new THREE.BoxGeometry(4.25, 3.8, .55), darkMat, [0, 1.92, -.27], { castShadow: false });
     const stone = new THREE.MeshStandardMaterial({ color: 0x303b41, map: makeMetalTexture(), metalness: .62, roughness: .7 });
@@ -171,6 +171,37 @@ export function createGateScene(canvas, onSelect) {
   }
   for (let i = 0; i < GATE_COUNT; i++) makeGate(i);
 
+  // Survey 00 objects: one lamp lies in the near snow; a missing brass tooth is caught in gate 01.
+  const brassMat = new THREE.MeshStandardMaterial({ color: 0xb78b4a, metalness: .76, roughness: .28, emissive: 0x493116, emissiveIntensity: .25 });
+  const lamp = new THREE.Group();
+  lamp.position.set(.92, .22, 1.35);
+  lamp.rotation.set(.18, -.28, -.58);
+  const lampBody = new THREE.Mesh(new THREE.CylinderGeometry(.105, .13, .62, 20), new THREE.MeshStandardMaterial({ color: 0x30383a, metalness: .8, roughness: .32 }));
+  lampBody.rotation.z = Math.PI / 2; lamp.add(lampBody);
+  const lampHead = new THREE.Mesh(new THREE.CylinderGeometry(.16, .12, .19, 20), new THREE.MeshStandardMaterial({ color: 0x7d8a8c, metalness: .78, roughness: .28 }));
+  lampHead.rotation.z = Math.PI / 2; lampHead.position.x = .36; lamp.add(lampHead);
+  const lampGlass = new THREE.Mesh(new THREE.CircleGeometry(.115, 20), new THREE.MeshBasicMaterial({ color: 0xb9d6d9, transparent: true, opacity: .76 }));
+  lampGlass.position.x = .46; lampGlass.rotation.y = Math.PI / 2; lamp.add(lampGlass);
+  const lampGlow = new THREE.PointLight(0x9bc4d0, .45, 1.8, 2); lampGlow.position.x = .42; lamp.add(lampGlow);
+  lamp.userData.itemId = "flashlight"; scene.add(lamp);
+
+  const tooth = new THREE.Group();
+  tooth.position.set(1.53, 1.18, -GATE_SPACING + .52);
+  const toothBody = new THREE.Mesh(new THREE.BoxGeometry(.18, .56, .14), brassMat);
+  tooth.add(toothBody);
+  for (let i = 0; i < 3; i++) {
+    const notch = new THREE.Mesh(new THREE.BoxGeometry(.17, .055, .2), brassMat);
+    notch.position.set(.08, -.16 + i * .17, 0); tooth.add(notch);
+  }
+  tooth.userData.itemId = "gate_tooth"; tooth.visible = true; brassMat.transparent = true; brassMat.opacity = .035; brassMat.emissiveIntensity = .02; scene.add(tooth);
+  const items = [lamp, tooth];
+  let registerActive = false, flashlightOn = false, focusedItem = null, toothRevealed = false;
+  const lampBeam = new THREE.SpotLight(0xc4e2ec, 0, 34, .3, .7, 1.3);
+  lampBeam.position.set(0, -.05, 0);
+  const beamTarget = new THREE.Object3D(); beamTarget.position.set(0, 0, -1);
+  camera.add(lampBeam); camera.add(beamTarget); lampBeam.target = beamTarget;
+  scene.add(camera);
+
   // Branch-like cables emerge over the later gates, revealing the change gradually.
   const tendrils = [];
   const tendrilMat = new THREE.MeshStandardMaterial({ color: 0x342226, emissive: 0x170809, emissiveIntensity: .55, roughness: .82 });
@@ -210,6 +241,19 @@ export function createGateScene(canvas, onSelect) {
   const scratch = new THREE.Vector3();
   const activeIndex = () => Math.min(Math.max(solvedCount, 0), GATE_COUNT - 1);
 
+  function setRegisterActive(active) { registerActive = Boolean(active); }
+  function setFlashlight(active) {
+    flashlightOn = Boolean(active);
+    lampBeam.intensity = flashlightOn ? 34 : 0;
+    lampBeam.angle = flashlightOn ? .31 : .01;
+    lampBeam.distance = 36;
+  }
+  function collectItem(item) {
+    if (!item || item.userData.collected || (item === tooth && !toothRevealed)) return;
+    item.userData.collected = true; item.visible = false;
+    onItemFound(item.userData.itemId);
+    if (focusedItem === item) { focusedItem = null; onItemFocus(null); }
+  }
   function setSolvedCount(count, isFinished = false) {
     solvedCount = Math.max(0, Math.min(GATE_COUNT, count));
     finished = Boolean(isFinished);
@@ -267,9 +311,10 @@ export function createGateScene(canvas, onSelect) {
       lastX = event.clientX; lastY = event.clientY;
     } else {
       eventPoint(event); raycaster.setFromCamera(pointer, camera);
+      const hitItem = raycaster.intersectObjects(items.filter(item => item.visible && !item.userData.collected && (item !== tooth || toothRevealed)), true).length > 0;
       const activeLock = locks[activeIndex()];
-      const hit = raycaster.intersectObject(activeLock, true).length > 0;
-      canvas.style.cursor = hit ? "pointer" : "grab";
+      const hit = registerActive && raycaster.intersectObject(activeLock, true).length > 0;
+      canvas.style.cursor = hitItem || hit ? "pointer" : "grab";
     }
   }
   function onPointerUp(event) {
@@ -277,15 +322,18 @@ export function createGateScene(canvas, onSelect) {
     dragging = false;
     if (!moved && Math.hypot(event.clientX - downX, event.clientY - downY) <= 5) {
       eventPoint(event); raycaster.setFromCamera(pointer, camera);
+      const itemHit = raycaster.intersectObjects(items.filter(item => item.visible && !item.userData.collected && (item !== tooth || toothRevealed)), true)[0];
+      if (itemHit) { collectItem(itemHit.object.parent === lamp ? lamp : itemHit.object.parent === tooth ? tooth : itemHit.object); return; }
       const active = activeIndex();
       const hits = raycaster.intersectObject(locks[active], true);
-      if (hits.length) onSelect(active);
+      if (registerActive && hits.length) onSelect(active);
     }
   }
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointercancel", () => { dragging = false; });
+  window.addEventListener("keydown", event => { if (event.key.toLowerCase() === "e" && focusedItem) collectItem(focusedItem); });
 
   function animate() {
     requestAnimationFrame(animate);
@@ -295,6 +343,17 @@ export function createGateScene(canvas, onSelect) {
     camera.position.y = 1.78 + Math.sin(clock.elapsedTime * .63) * .014;
     const target = scratch.set(Math.sin(yaw) * 12, 1.83 + pitch * 8, camera.position.z - 12);
     camera.lookAt(target);
+    if (flashlightOn && !tooth.userData.collected) {
+      raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+      const hit = raycaster.intersectObject(tooth, true).length > 0;
+      if (hit && !toothRevealed) { toothRevealed = true; brassMat.opacity = 1; brassMat.emissiveIntensity = .35; }
+      tooth.visible = !tooth.userData.collected;
+    }
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const focused = raycaster.intersectObjects(items.filter(item => item.visible && !item.userData.collected && (item !== tooth || toothRevealed)), true)[0];
+    let nextFocus = null;
+    if (focused) nextFocus = items.find(item => { let node = focused.object; while (node) { if (node === item) return true; node = node.parent; } return false; }) || null;
+    if (nextFocus !== focusedItem) { focusedItem = nextFocus; onItemFocus(focusedItem?.userData.itemId || null); }
     const creep = Math.min(1, solvedCount / 9);
     gates.forEach((gate, i) => {
       const amount = i < solvedCount ? 1 : 0;
@@ -322,6 +381,9 @@ export function createGateScene(canvas, onSelect) {
   return {
     resize,
     setSolvedCount,
+    setRegisterActive,
+    setFlashlight,
+    get flashlightOn() { return flashlightOn; },
     dispose() {
       resizeObserver.disconnect();
       window.removeEventListener("resize", resize);

@@ -18,24 +18,24 @@
   <div class="film-grain" aria-hidden="true"></div>
   <header class="masthead">
     <div class="brand"><span class="brand-mark">N</span><span>NORTH POLE TRANSIT AUTHORITY</span></div>
-    <div class="header-state"><span class="live-dot"></span><span>RECOVERED TERMINAL</span><button id="voice-toggle" class="voice-toggle" type="button" aria-label="Toggle the quiet voice cue" aria-pressed="true">VOICE: ON</button><time id="utc-clock">--:--:-- UTC</time></div>
+    <div class="header-state"><span class="live-dot"></span><span>RECOVERED TERMINAL</span><button id="audio-toggle" class="voice-toggle" type="button" aria-label="Toggle ambient audio" aria-pressed="true">AUDIO: ON</button><time id="utc-clock">--:--:-- UTC</time></div>
   </header>
 
   <main class="layout">
     <section class="scene-panel" aria-label="Interactive 3D North Pole gate">
       <div class="scene-topline"><span>GATE 09 / ACCESS CHAMBER</span><span id="scene-coordinates">89° 59′ 42.0″ N</span></div>
-      <canvas id="gate-scene" tabindex="0" aria-label="A frozen iron gate with ten sealed locks. Drag to look around; use arrow keys to rotate."></canvas>
+      <canvas id="gate-scene" tabindex="0" aria-label="A frozen iron gate with ten sealed locks. Drag to look around; use the hand lamp to reveal objects."></canvas>
       <div class="scene-vignette" aria-hidden="true"></div>
       <div class="gate-title"><span class="eyebrow">LAST KNOWN TRANSMISSION · 24 DEC 1998</span><h1>The Continuity Gate</h1><p>Ten seals. One route that should not exist.</p></div>
       <div class="scene-bottomline"><span><i class="mouse-icon"></i> DRAG TO ROTATE</span><span><i class="key-icon">↵</i> SELECT A SEAL</span><span id="seal-status">SEALS: 00 / 10</span></div>
-      <div class="crosshair" aria-hidden="true"></div>
+      <div class="crosshair" aria-hidden="true"></div><div class="scene-prompt" id="scene-prompt" aria-live="polite"></div>
     </section>
 
     <aside class="terminal-panel">
       <div class="terminal-head"><div><span class="eyebrow">ARCHIVE TERMINAL</span><h2>Dispatch record</h2></div><span class="record-id">NP / 09-A</span></div>
       <div class="terminal-rule"></div>
       <div class="status-line"><span class="status-label">GATE STATE</span><span class="status-value"><span class="status-light"></span><span id="gate-state">SEALED</span></span></div>
-      <p class="terminal-copy">The station is unmanned. The gate is not. A recovered game file is the only record that survived the last route cycle.</p>
+      <p class="terminal-copy">The station is unmanned. The gate is not. The archive will not register a route until the missing tooth is returned.</p><section class="survey-card" aria-label="Required gate survey"><div class="survey-head"><span>REQUIRED / SURVEY 00</span><span class="survey-mark">●</span></div><p id="survey-status">SURVEY THE CHAMBER; RECOVER THE LAMP</p><div class="inventory-items" id="inventory-items" aria-label="Recovered inventory"></div><small>DRAG TO LOOK · EQUIP THE LAMP · SWEEP THE FIRST GATE</small></section>
       <div class="transmission" id="transmission-card">
         <div class="transmission-header"><span>INCOMING / TAPE 01</span><span class="rec-dot">● REC</span></div>
         <p>“The outer locks are frozen. I can hear the mechanism moving from the other side.”</p>
@@ -45,23 +45,23 @@
       <div class="seal-list-head"><span>SEAL REGISTER</span><span id="seal-count">00—10</span></div>
         <div class="seal-grid" id="seal-grid"></div>
       </div>
-      <button class="primary-button" id="recover-button"><span class="button-icon">▶</span><span>RECOVER TAPE 01</span><span class="button-arrow">↗</span></button>
+      <button class="primary-button" id="recover-button" disabled aria-disabled="true"><span class="button-icon">▶</span><span>RECOVER TAPE 01</span><span class="button-arrow">↗</span></button>
       <div class="terminal-foot"><span>CASE FILE: NP-1998-12-24</span><span>LOCAL PROGRESS SAVED</span></div>
     </aside>
   </main>
 
   <section class="notice-row" aria-label="Experience information">
-    <span><b>01</b> The recovered game runs inside the archive.</span>
-    <span><b>02</b> After roughly five minutes of active play, the recording changes.</span>
-    <span><b>03</b> All campus evidence is designed to be solved online.</span>
+    <span><b>01</b> The gate survey is required to activate the seal register.</span>
+    <span><b>02</b> The hand lamp reveals objects hidden in the first gate.</span>
+    <span><b>03</b> Progress is stored in this browser.</span>
   </section>
 
   <dialog id="tape-dialog" class="tape-dialog" aria-labelledby="tape-heading">
     <div class="dialog-shell">
       <div class="dialog-bar"><span><span class="live-dot"></span> RECOVERED MEDIA / TAPE 01</span><button id="close-tape" class="icon-button" aria-label="Close recovered tape">×</button></div>
       <div class="dialog-content">
-        <div class="tape-copy"><span class="eyebrow">UNVERIFIED FLASH ARCHIVE · 1998</span><h2 id="tape-heading">Christmas Cat</h2><p>This file was found inside the gate’s dispatch cache. Its original title card has been removed.</p><div class="timer-row"><span>ACTIVE PLAYBACK</span><time id="play-timer">00:00 / 05:00</time></div><div class="timer-track"><span id="timer-progress"></span></div><p class="small-note">The timer pauses while this tab is hidden. You can close the recording at any time.</p></div>
-        <div class="player-wrap" id="player-wrap"><div id="ruffle-container" class="ruffle-container"><div class="player-loading" id="player-loading">INITIALIZING OLD MEDIA…</div></div><div class="glitch-screen" id="glitch-screen" aria-live="assertive" aria-hidden="true"><div class="glitch-noise"></div><div class="glitch-content"><span class="eyebrow">SIGNAL RESTORED / SOURCE: INSIDE</span><p class="glitch-line">THE GAME DID NOT END.</p><p class="glitch-line second">IT NOTICED YOU.</p><span class="glitch-time">00:05:00 — 00:05:03 — 00:05:00</span><button class="text-button" id="ack-glitch">ACKNOWLEDGE TRANSMISSION <span>↗</span></button></div></div></div>
+        <div class="tape-copy"><span class="eyebrow">UNVERIFIED FLASH ARCHIVE · 1998</span><h2 id="tape-heading">Christmas Cat</h2><p>This file was found inside the gate’s dispatch cache. Its original title card has been removed.</p><p class="small-note">Playback is manual. Close the recording at any time.</p></div>
+        <div class="player-wrap" id="player-wrap"><div id="ruffle-container" class="ruffle-container"><div class="player-loading" id="player-loading">INITIALIZING OLD MEDIA…</div></div></div>
       </div>
     </div>
   </dialog>
@@ -70,7 +70,6 @@
     <div class="seal-card"><button id="close-seal" class="icon-button" aria-label="Close seal record">×</button><span class="eyebrow" id="seal-kicker">SEAL 01 / PUZZLE</span><h2 id="seal-heading">No entry</h2><p id="seal-description">The record has not been recovered.</p><div class="puzzle-body" id="puzzle-body"></div><form id="puzzle-form" class="puzzle-form"><label for="puzzle-answer">SUBMIT RECOVERED CODE</label><div class="answer-row"><input id="puzzle-answer" autocomplete="off" spellcheck="false" maxlength="80" placeholder="ENTER CODE" required><button class="primary-button small-button" type="submit">SUBMIT ↗</button></div></form><div class="puzzle-feedback" id="puzzle-feedback" aria-live="polite"></div><button id="hint-button" class="hint-button" type="button">REQUEST HINT 01 / 03</button><div class="seal-record" id="seal-record">WAITING FOR FIRST TRANSMISSION…</div></div>
   </dialog>
 
-  <audio id="warning-audio" preload="auto" src="assets/audio/np-warning-play-the-game.mp3"></audio>
   <audio id="escalating-audio" preload="auto" src="assets/audio/np-escalation-play-it.mp3"></audio>
   <footer class="page-footer"><span>FICTIONAL INTERACTIVE EXPERIENCE · NO CAMPUS VISIT REQUIRED</span><span>BUILD 09.12 / SIGNAL LOSS EXPECTED</span></footer>
 </body>
