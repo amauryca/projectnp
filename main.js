@@ -1,7 +1,6 @@
 (() => {
   const $ = (selector) => document.querySelector(selector);
   const canvas = $("#gate-scene");
-  const ctx = canvas.getContext("2d", { alpha: false });
   const tapeDialog = $("#tape-dialog");
   const sealDialog = $("#seal-dialog");
   const glitchScreen = $("#glitch-screen");
@@ -21,11 +20,8 @@
   let gamePlayer = null;
   let timerInterval = null;
   let lastTick = 0;
-  let pointer = { down: false, x: 0, y: 0, yaw: -.14, pitch: -.06, targetYaw: -.14, targetPitch: -.06 };
-  const GATE_SPACING = 9.5;
-  let width = 0, height = 0, dpr = 1, stars = [], snow = [], gateHitboxes = [];
-  let currentPuzzle = -1, cameraProgress = progress.solved.length * GATE_SPACING, lastFrameTime = 0;
-  const doorOpenLevels = Array.from({ length: 10 }, (_, i) => i < progress.solved.length ? 1 : 0);
+  let currentPuzzle = -1;
+  let sceneController = null;
 
   function readProgress() {
     try {
@@ -98,176 +94,22 @@
     if (document.hidden) markAway(); else scheduleIdleCue();
   }
 
-  function setupCanvas() {
-    const rect = canvas.getBoundingClientRect(); dpr = Math.min(window.devicePixelRatio || 1, 1.7);
-    width = rect.width; height = rect.height; canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    stars = Array.from({ length: Math.floor(width * height / 5200) }, () => ({ x: Math.random() * width, y: Math.random() * height * .58, r: Math.random() * 1.2 + .2, a: Math.random() * .48 + .08, p: Math.random() * 6 }));
-    snow = Array.from({ length: Math.floor(width * height / 3000) }, () => ({ x: Math.random() * width, y: Math.random() * height, r: Math.random() * 1.8 + .3, v: Math.random() * .42 + .1, drift: Math.random() * .4 - .2 }));
-  }
-  function rotate(v) {
-    let [x, y, z] = v;
-    const cy = Math.cos(pointer.yaw), sy = Math.sin(pointer.yaw); [x, z] = [x * cy - z * sy, x * sy + z * cy];
-    const cp = Math.cos(pointer.pitch), sp = Math.sin(pointer.pitch); [y, z] = [y * cp - z * sp, y * sp + z * cp];
-    return [x, y, z];
-  }
-  function project(v) {
-    const p = rotate([v[0], v[1] - 1.45, v[2] + cameraProgress]), camera = 8.4, scale = Math.min(width, height) * 1.2;
-    const depth = camera - p[2];
-    if (depth < 1) return null;
-    return { x: width * .5 + p[0] * scale / depth, y: height * .51 - p[1] * scale / depth, z: p[2], scale: scale / depth };
-  }
-  function poly(points, color, alpha = 1, stroke = null) {
-    const q = points.map(project); if (q.some(v => !v)) return;
-    ctx.globalAlpha = alpha; ctx.beginPath(); ctx.moveTo(q[0].x, q[0].y); q.slice(1).forEach(v => ctx.lineTo(v.x, v.y)); ctx.closePath();
-    ctx.fillStyle = color; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = .7; ctx.stroke(); } ctx.globalAlpha = 1;
-    return q;
-  }
-  function box(cx, cy, cz, sx, sy, sz, palette) {
-    const x0 = cx - sx/2, x1 = cx + sx/2, y0 = cy - sy/2, y1 = cy + sy/2, z0 = cz - sz/2, z1 = cz + sz/2;
-    const f = [
-      { p:[[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]],c:palette[0] },
-      { p:[[x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0]],c:palette[1] },
-      { p:[[x1,y0,z1],[x1,y0,z0],[x1,y1,z0],[x1,y1,z1]],c:palette[2] },
-      { p:[[x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[x0,y1,z0]],c:palette[3] },
-      { p:[[x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1]],c:palette[4] }
-    ];
-    return f.sort((a,b)=>a.p.reduce((s,v)=>s+v[2],0)-b.p.reduce((s,v)=>s+v[2],0)).map(f=>poly(f.p,f.c,1,"rgba(213,229,232,.13)"));
-  }
-  function ring(cx, cy, cz, radius, tube, color, id = -1) {
-    const segments = 32, quads = [], center = [cx, cy, cz];
-    for (let i=0; i<segments; i++) {
-      const a=i/segments*Math.PI*2,b=(i+1)/segments*Math.PI*2;
-      for (let j=0; j<8; j++) {
-        const c=j/8*Math.PI*2,d=(j+1)/8*Math.PI*2;
-        const pt=(ang,off)=>[center[0]+(radius+Math.cos(off)*tube)*Math.cos(ang),center[1]+(radius+Math.cos(off)*tube)*Math.sin(ang),center[2]+Math.sin(off)*tube];
-        const vertices=[pt(a,c),pt(b,c),pt(b,d),pt(a,d)];
-        const depth=vertices.reduce((s,v)=>s+rotate(v)[2],0)/4;
-        quads.push({vertices,depth});
-      }
+  function setupCanvas() { sceneController?.resize(); }
+  async function initializeThreeScene() {
+    try {
+      const { createGateScene } = await import("./scene3d.js");
+      sceneController = createGateScene(canvas, index => openSeal(index));
+      sceneController.setSolvedCount(progress.solved.length, progress.finished);
+    } catch (error) {
+      const message = document.createElement("div");
+      message.className = "scene-error";
+      message.textContent = "3D SCENE UNAVAILABLE — RELOAD THE ARCHIVE";
+      canvas.after(message);
+      console.error("North Pole 3D scene failed to initialize", error);
     }
-    quads.sort((a,b)=>a.depth-b.depth).forEach((q,i)=>{
-      const out=poly(q.vertices,(i%8===0)?"#9babb1":color,.96,"rgba(224,236,239,.22)");
-      if(id>=0 && out){const box=out.reduce((a,v)=>({minX:Math.min(a.minX,v.x),maxX:Math.max(a.maxX,v.x),minY:Math.min(a.minY,v.y),maxY:Math.max(a.maxY,v.y)}),{minX:Infinity,maxX:-Infinity,minY:Infinity,maxY:-Infinity});gateHitboxes[id]=box;}
-    });
-  }
-  function transformLeafPoint(x, y, z, hingeX, angle) {
-    const dx = x - hingeX, c = Math.cos(angle), sn = Math.sin(angle);
-    return [hingeX + dx * c, y, z - dx * sn];
-  }
-  function drawDoorLeaf(hingeX, side, y0, y1, z, amount, creep) {
-    const angle = amount * 1.32 * (side === "left" ? 1 : -1);
-    const freeX = side === "left" ? 0 : hingeX;
-    const outerX = side === "left" ? hingeX : 0;
-    const frontZ = z + .14;
-    const face = [
-      transformLeafPoint(outerX, y0, frontZ, hingeX, angle),
-      transformLeafPoint(freeX, y0, frontZ, hingeX, angle),
-      transformLeafPoint(freeX, y1, frontZ, hingeX, angle),
-      transformLeafPoint(outerX, y1, frontZ, hingeX, angle)
-    ];
-    const edge = [
-      transformLeafPoint(outerX, y0, z - .05, hingeX, angle),
-      transformLeafPoint(outerX, y1, z - .05, hingeX, angle),
-      transformLeafPoint(outerX, y1, frontZ, hingeX, angle),
-      transformLeafPoint(outerX, y0, frontZ, hingeX, angle)
-    ];
-    const base = Math.round(38 - creep * 18), red = Math.round(48 + creep * 42);
-    poly(edge, `rgb(${base},${base + 8},${base + 12})`, 1, "rgba(195,215,220,.24)");
-    poly(face, `rgb(${base - 6},${base},${base + 6})`, 1, `rgba(${135 + red},${160 - creep * 55},${170 - creep * 75},.42)`);
-    for (let rail = 0; rail < 3; rail++) {
-      const y = y0 + .32 + rail * .82;
-      const a = transformLeafPoint(outerX + (side === "left" ? .16 : -.16), y, frontZ + .012, hingeX, angle);
-      const b = transformLeafPoint(freeX + (side === "left" ? -.16 : .16), y, frontZ + .012, hingeX, angle);
-      const c = transformLeafPoint(freeX + (side === "left" ? -.16 : .16), y + .035, frontZ + .012, hingeX, angle);
-      const d = transformLeafPoint(outerX + (side === "left" ? .16 : -.16), y + .035, frontZ + .012, hingeX, angle);
-      poly([a,b,c,d], creep > .45 ? "#593b3d" : "#71818a", .78);
-    }
-    const braceA = transformLeafPoint(outerX, y0 + .18, frontZ + .02, hingeX, angle);
-    const braceB = transformLeafPoint(freeX, y1 - .18, frontZ + .02, hingeX, angle);
-    const braceC = transformLeafPoint(freeX, y1 - .22, frontZ + .02, hingeX, angle);
-    const braceD = transformLeafPoint(outerX, y0 + .14, frontZ + .02, hingeX, angle);
-    poly([braceA,braceB,braceC,braceD], creep > .55 ? "#75413e" : "#42515a", .8);
-  }
-  function drawGate(index, z, amount, creep, active) {
-    const iron = creep > .72 ? ["#3a282a","#231c20","#503539","#674448","#17171b"] : ["#39434a","#202a31","#4b555b","#46545b","#1a2026"];
-    // A black throat behind every door makes the next opening feel deep.
-    poly([[-1.78,.2,z-.12],[1.78,.2,z-.12],[1.78,3.18,z-.12],[-1.78,3.18,z-.12]], creep > .5 ? "#09080b" : "#080d12", 1);
-    box(-2.05,1.67,z,.42,3.5,.5,iron);
-    box(2.05,1.67,z,.42,3.5,.5,iron);
-    box(0,3.36,z,4.55,.42,.5,iron);
-    box(-1.78,1.65,z+.05,.14,3.12,.62,["#71828a","#38464c","#8b9ba0","#9ba8ab","#3b464b"]);
-    box(1.78,1.65,z+.05,.14,3.12,.62,["#71828a","#38464c","#8b9ba0","#9ba8ab","#3b464b"]);
-    box(0,3.08,z+.04,3.62,.12,.58,["#64747b","#303c42","#8b999e","#a3afb2","#323c42"]);
-    drawDoorLeaf(-1.68,"left",.12,3.12,z,amount,creep);
-    drawDoorLeaf(1.68,"right",.12,3.12,z,amount,creep);
-    // Hinges, rivets and a changing warning mark make each threshold distinct.
-    for (let side of [-1,1]) {
-      for (let y of [.48,1.28,2.08,2.88]) {
-        box(side*1.68,y,z+.34,.13,.16,.1,creep > .6 ? ["#8b5149","#3b292b","#b05c50","#bd7864","#36272a"] : ["#82949a","#48565c","#aab7ba","#b5c0c2","#414c51"]);
-      }
-    }
-    if (creep > .18) {
-      const spread = .18 + creep * .32;
-      poly([[-1.78,2.95,z+.3],[-1.78-spread,2.2,z+.3],[-1.72,1.7,z+.3],[-1.86-spread,1.05,z+.3],[-1.78,.35,z+.3]], "#572f34", .56);
-      poly([[1.78,2.85,z+.3],[1.78+spread,2.2,z+.3],[1.73,1.55,z+.3],[1.9+spread,.8,z+.3],[1.78,.35,z+.3]], "#572f34", .5);
-    }
-    if (active) {
-      const solved = progress.solved.includes(index), tint = solved ? "#c8dedf" : creep > .65 ? "#b7574d" : "#98b5bd";
-      ring(0,1.65,z+.53,.28,.055,tint,index);
-      const p = project([0,1.65,z+.82]);
-      if (p) {
-        const r = Math.max(13,p.scale*.42);
-        gateHitboxes[index] = { minX:p.x-r, maxX:p.x+r, minY:p.y-r, maxY:p.y+r };
-        ctx.fillStyle = tint; ctx.globalAlpha = .92; ctx.font = `600 ${Math.max(9,Math.min(15,p.scale*7))}px IBM Plex Mono,monospace`; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(String(index+1).padStart(2,"0"),p.x,p.y); ctx.globalAlpha=1;
-      }
-    }
-  }
-  function drawScene(now) {
-    const dt = lastFrameTime ? Math.min(.05,(now-lastFrameTime)/1000) : 0;
-    lastFrameTime = now;
-    const completed = Math.min(10,progress.solved.length);
-    const targetProgress = completed >= 10 ? 10 * GATE_SPACING + 6 : completed * GATE_SPACING + 3.1;
-    if (dt) cameraProgress += Math.sign(targetProgress-cameraProgress) * Math.min(Math.abs(targetProgress-cameraProgress),dt*1.05);
-    const creep = Math.min(1,completed/9);
-    const red = Math.round(10+creep*25), ice = Math.round(34-creep*18);
-    ctx.clearRect(0,0,width,height);
-    const sky=ctx.createLinearGradient(0,0,0,height);
-    sky.addColorStop(0,`rgb(${14+red},${22- creep*8},${30- creep*10})`);
-    sky.addColorStop(.5,`rgb(${17+red},${31- creep*11},${39- creep*12})`);
-    sky.addColorStop(1,"#050609");ctx.fillStyle=sky;ctx.fillRect(0,0,width,height);
-    stars.forEach(s=>{ctx.globalAlpha=s.a*(.78+Math.sin(now/1800+s.p)*.22);ctx.fillStyle=creep>.65&&s.p>3?"#bd6b62":"#d5e6ec";ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fill();});ctx.globalAlpha=1;
-    const aurora=ctx.createLinearGradient(0,height*.18,width,height*.55);aurora.addColorStop(0,"rgba(74,112,115,0)");aurora.addColorStop(.45,`rgba(${82+red},${124-creep*75},${125-creep*70},${.1+creep*.08})`);aurora.addColorStop(.72,"rgba(73,97,118,.08)");aurora.addColorStop(1,"rgba(74,112,115,0)");ctx.fillStyle=aurora;ctx.fillRect(0,height*.12,width,height*.45);
-    const nearZ=6-cameraProgress,farZ=-74-cameraProgress;
-    // The hall floor and walls are projected as perspective planes, so the camera really travels through them.
-    poly([[-3.25,-.08,nearZ],[3.25,-.08,nearZ],[3.25,-.08,farZ],[-3.25,-.08,farZ]],`rgb(${10+ice},${15+ice},${19+ice})`,1,"rgba(159,179,186,.12)");
-    poly([[-3.25,0,nearZ],[-3.25,0,farZ],[-3.25,4.1,farZ],[-3.25,4.1,nearZ]],`rgb(${17+ice},${23+ice},${28+ice})`,1,"rgba(160,181,187,.11)");
-    poly([[3.25,0,nearZ],[3.25,4.1,nearZ],[3.25,4.1,farZ],[3.25,0,farZ]],`rgb(${13+ice},${18+ice},${23+ice})`,1,"rgba(160,181,187,.11)");
-    poly([[-3.25,4.1,nearZ],[3.25,4.1,nearZ],[3.25,4.1,farZ],[-3.25,4.1,farZ]],`rgb(${12+ice},${18+ice},${23+ice})`,.88);
-    // Repeating ribs, floor seams and lamps create a long sense of forward motion.
-    for(let step=0;step<16;step++){
-      const z=6-cameraProgress-step*4.5;
-      box(-3.08,2.05,z,.2,4.1,.2,["#252f35","#171d22","#3e4a50","#4a555b","#151a1f"]);
-      box(3.08,2.05,z,.2,4.1,.2,["#252f35","#171d22","#3e4a50","#4a555b","#151a1f"]);
-      poly([[-3.18,2.1,z+.04],[-3.2,2.1,z-.12],[-3.2,2.7,z-.12],[-3.18,2.7,z+.04]],creep>.5?"#7b403c":"#75919b",.16+creep*.22);
-      if(step%2===0) box(0,3.92,z,6.3,.1,.18,["#344148","#1b242a","#56636a","#657279","#1a2026"]);
-    }
-    // Door leaves open with a slow hinge swing as a seal clears; the corridor advances to the next threshold.
-    gateHitboxes=[];
-    for(let i=9;i>=0;i--){
-      const target=i<completed?1:0;
-      doorOpenLevels[i]+=(target-doorOpenLevels[i])*Math.min(1,dt*.72);
-      if(Math.abs(target-doorOpenLevels[i])<.002)doorOpenLevels[i]=target;
-      drawGate(i,-i*GATE_SPACING,doorOpenLevels[i],creep,i===Math.min(9,completed));
-    }
-    // Close red light and small drifting ice flecks intensify with each recovered record.
-    const lamp=project([0,3.55,3.8-cameraProgress]);
-    if(lamp){const pulse=.42+Math.sin(now/(920-creep*300))*(.12+creep*.1);ctx.fillStyle=`rgba(175,${70-creep*34},${65-creep*28},${pulse})`;ctx.shadowColor=creep>.35?"#b23d38":"#aa4640";ctx.shadowBlur=10+creep*20;ctx.beginPath();ctx.arc(lamp.x,lamp.y,2+creep*3,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
-    snow.forEach(f=>{f.y+=f.v*(1+creep*.5);f.x+=f.drift;if(f.y>height){f.y=-4;f.x=Math.random()*width}if(f.x<0)f.x=width;if(f.x>width)f.x=0;ctx.fillStyle=creep>.75&&f.r>1.2?"rgba(190,92,82,.46)":"rgba(213,226,231,.48)";ctx.beginPath();ctx.arc(f.x,f.y,f.r,0,Math.PI*2);ctx.fill();});
-    pointer.yaw+=(pointer.targetYaw-pointer.yaw)*.06;pointer.pitch+=(pointer.targetPitch-pointer.pitch)*.06;
-    requestAnimationFrame(drawScene);
   }
   function renderSealList() {
+    sceneController?.setSolvedCount(progress.solved.length, progress.finished);
     const grid=$("#seal-grid");grid.replaceChildren();
     puzzles.forEach((puzzle,i)=>{const button=document.createElement("button");const solved=progress.solved.includes(i),available=i<progress.unlocked;button.className="seal-cell"+(available?" ready":"")+(solved?" solved":"")+(available&&!solved?" available":"");button.textContent=String(i+1).padStart(2,"0");button.setAttribute("aria-label",`${solved?"Solved":available?"Available":"Locked"} puzzle ${i+1}: ${puzzle.name}`);button.addEventListener("click",()=>openSeal(i));grid.append(button);});
     const count=String(progress.solved.length).padStart(2,"0");$("#seal-status").textContent=`SEALS: ${count} / 10`;$("#seal-count").textContent=`${count}—10`;$("#gate-state").textContent=progress.finished?"OPEN / RECORDING":""+(progress.solved.length?`${String(progress.solved.length).padStart(2,"0")} SEALS RELEASED`:progress.revealed?"FIRST SEAL RELEASED":"SEALED");
@@ -392,14 +234,6 @@
     }
   }
   function closeTape(){if(tapeDialog.open)tapeDialog.close();}
-  function setGateTarget(i){
-    if(i<0||i>9)return;pointer.targetYaw=(i%5-2)*.12;pointer.targetPitch=i<5?-.16:.03;
-    const cell=$(".seal-cell:nth-child("+(i+1)+")");cell?.focus({preventScroll:true});openSeal(i);
-  }
-  canvas.addEventListener("pointerdown",e=>{pointer.down=true;pointer.x=e.clientX;pointer.y=e.clientY;canvas.setPointerCapture(e.pointerId);});
-  canvas.addEventListener("pointermove",e=>{if(!pointer.down)return;const dx=e.clientX-pointer.x,dy=e.clientY-pointer.y;pointer.targetYaw=Math.max(-.7,Math.min(.7,pointer.targetYaw+dx*.004));pointer.targetPitch=Math.max(-.32,Math.min(.32,pointer.targetPitch+dy*.002));pointer.x=e.clientX;pointer.y=e.clientY;});
-  canvas.addEventListener("pointerup",e=>{pointer.down=false;const rect=canvas.getBoundingClientRect(),x=e.clientX-rect.left,y=e.clientY-rect.top;const hit=gateHitboxes.findIndex(b=>b&&x>=b.minX&&x<=b.maxX&&y>=b.minY&&y<=b.maxY);if(hit>=0)setGateTarget(hit);});
-  canvas.addEventListener("keydown",e=>{if(e.key==="ArrowLeft"){pointer.targetYaw-=.08;e.preventDefault()}if(e.key==="ArrowRight"){pointer.targetYaw+=.08;e.preventDefault()}if(e.key==="Enter"||e.key===" "){setGateTarget(0);e.preventDefault()}});
   $("#recover-button").addEventListener("click",openTape);
   $("#close-tape").addEventListener("click",closeTape);
   $("#ack-glitch").addEventListener("click",()=>{closeTape();document.body.classList.remove("glitched");});
@@ -409,5 +243,5 @@
   tapeDialog.addEventListener("click",e=>{if(e.target===tapeDialog)closeTape();});
   sealDialog.addEventListener("click",e=>{if(e.target===sealDialog)sealDialog.close();});
   window.addEventListener("resize",setupCanvas);
-  initializePresenceCue();updateClock();setInterval(updateClock,1000);setupCanvas();renderSealList();renderTimer();requestAnimationFrame(drawScene);
+  initializePresenceCue();updateClock();setInterval(updateClock,1000);setupCanvas();renderSealList();renderTimer();initializeThreeScene();
 })();
