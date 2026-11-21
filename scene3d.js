@@ -287,6 +287,8 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
   const pointer = new THREE.Vector2();
   const clock = new THREE.Clock();
   let solvedCount = 0, finished = false, yaw = 0, pitch = 0;
+  const heldKeys = new Set();
+  let travelOffset = 0, lateralOffset = 0;
   let dragging = false, downX = 0, downY = 0, lastX = 0, lastY = 0, moved = false;
   const scratch = new THREE.Vector3();
   const activeIndex = () => Math.min(Math.max(solvedCount, 0), GATE_COUNT - 1);
@@ -396,6 +398,7 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
   }
   function onPointerDown(event) {
     dragging = true; moved = false;
+    canvas.focus({ preventScroll: true });
     downX = lastX = event.clientX; downY = lastY = event.clientY;
     canvas.setPointerCapture(event.pointerId);
   }
@@ -432,9 +435,29 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointercancel", () => { dragging = false; });
   window.addEventListener("keydown", event => {
+    const movementKeys = ["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+    if (movementKeys.includes(event.code) && !document.querySelector("dialog[open]") && !event.target.closest?.("input,select,textarea,button,[contenteditable=true]")) {
+      heldKeys.add(event.code);
+      event.preventDefault();
+    }
     if (event.key.toLowerCase() !== "e" || !focusedItem) return;
     if (focusedItem === lamp || focusedItem === tooth) collectItem(focusedItem);
     else if (focusedItem.userData?.puzzleIndex === activeIndex() && registerActive) onSelect(activeIndex());
+  });
+  window.addEventListener("keyup", event => heldKeys.delete(event.code));
+  window.addEventListener("blur", () => heldKeys.clear());
+  const padCodes = { forward: "KeyW", back: "KeyS", left: "KeyA", right: "KeyD" };
+  document.querySelectorAll("[data-move]").forEach(button => {
+    const code = padCodes[button.dataset.move];
+    const release = () => heldKeys.delete(code);
+    button.addEventListener("pointerdown", event => {
+      event.preventDefault();
+      if (!document.querySelector("dialog[open]")) heldKeys.add(code);
+      button.setPointerCapture(event.pointerId);
+    });
+    button.addEventListener("pointerup", release);
+    button.addEventListener("pointercancel", release);
+    button.addEventListener("lostpointercapture", release);
   });
 
   let lastFocusCheck = 0;
@@ -442,8 +465,16 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
     requestAnimationFrame(animate);
     adaptRenderScale(timestamp);
     const delta = Math.min(.05, clock.getDelta());
-    const targetZ = finished ? 5.2 - (GATE_COUNT - 1) * GATE_SPACING - 7.5 : 5.2 - solvedCount * GATE_SPACING;
-    camera.position.z = THREE.MathUtils.damp(camera.position.z, targetZ, .68, delta);
+    const baseZ = finished ? 5.2 - (GATE_COUNT - 1) * GATE_SPACING - 7.5 : 5.2 - solvedCount * GATE_SPACING;
+    const forward = Number(heldKeys.has("KeyW") || heldKeys.has("ArrowUp")) - Number(heldKeys.has("KeyS") || heldKeys.has("ArrowDown"));
+    const strafe = Number(heldKeys.has("KeyD") || heldKeys.has("ArrowRight")) - Number(heldKeys.has("KeyA") || heldKeys.has("ArrowLeft"));
+    const activeGateZ = -(activeIndex() + 1) * GATE_SPACING;
+    const closestAllowedZ = activeGateZ + 4.2;
+    const minTravelOffset = Math.min(0, closestAllowedZ - baseZ);
+    travelOffset = THREE.MathUtils.clamp(travelOffset - forward * 5.2 * delta, minTravelOffset, 5.5);
+    lateralOffset = THREE.MathUtils.clamp(lateralOffset + strafe * 4.0 * delta, -2.4, 2.4);
+    camera.position.z = THREE.MathUtils.damp(camera.position.z, baseZ + travelOffset, 2.6, delta);
+    camera.position.x = THREE.MathUtils.damp(camera.position.x, lateralOffset, 4.2, delta);
     camera.position.y = 1.78 + Math.sin(clock.elapsedTime * .63) * .014;
     const target = scratch.set(Math.sin(yaw) * 12, 1.83 + pitch * 8, camera.position.z - 12);
     camera.lookAt(target);
