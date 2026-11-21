@@ -44,10 +44,10 @@
     button.setAttribute("aria-pressed", String(voiceEnabled));
   }
   function distortionCurve(amount) {
-    const samples = 512, curve = new Float32Array(samples), k = amount * 120;
+    const samples = 512, curve = new Float32Array(samples), drive = 1 + amount * 18, normalizer = Math.tanh(drive);
     for (let i = 0; i < samples; i++) {
       const x = i * 2 / (samples - 1) - 1;
-      curve[i] = ((3 + k) * x * 20 * Math.PI / 180) / (Math.PI + k * Math.abs(x));
+      curve[i] = Math.tanh(x * drive) / normalizer;
     }
     return curve;
   }
@@ -93,7 +93,7 @@
   function playFirstWarning() {
     if (!voiceEnabled || !warningAudio) return;
     stopAudioCues(); primeAudio();
-    warningAudio.currentTime = 0; warningAudio.volume = 0.13;
+    warningAudio.currentTime = 0; warningAudio.volume = audioContext && warningBus ? 1 : 0.13;
     if (audioContext && warningBus) {
       const now = audioContext.currentTime;
       warningBus.gain.gain.cancelScheduledValues(now);
@@ -124,7 +124,7 @@
       escalatingAudio.playbackRate = 1 - i * .025;
       const now = audioContext?.currentTime || 0;
       const [from, to] = gainStages[i], [soft, harsh] = distortionStages[i];
-      escalatingAudio.volume = to;
+      escalatingAudio.volume = audioContext && escalationBus ? 1 : to;
       if (audioContext && escalationBus) {
         const gain = escalationBus.gain.gain;
         gain.cancelScheduledValues(now);
