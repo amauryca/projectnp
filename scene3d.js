@@ -60,14 +60,23 @@ function createNumberTexture(number) {
 }
 
 export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItemFocus = () => {}) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
+  // Start with a sensible Retina-safe scale, then tune it to the actual frame rate.
+  // Safari often hides deviceMemory, so the unknown-hardware default stays conservative.
+  const memoryGB = Number(navigator.deviceMemory) || 0;
+  const cpuCores = Number(navigator.hardwareConcurrency) || 0;
+  const compactScreen = Math.min(window.innerWidth, window.innerHeight) < 700;
+  const lowPower = compactScreen || (memoryGB > 0 && memoryGB <= 4) || (cpuCores > 0 && cpuCores <= 4);
+  let renderScale = Math.min(window.devicePixelRatio || 1, lowPower ? 1 : 1.25);
+  const minRenderScale = lowPower ? .7 : .82;
+  const maxRenderScale = lowPower ? 1 : 1.25;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !lowPower, powerPreference: "high-performance" });
+  renderer.setPixelRatio(renderScale);
   renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.08;
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = !lowPower;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a1017);
@@ -79,8 +88,8 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
   scene.add(ambient);
   const moon = new THREE.DirectionalLight(0x9bb4c1, 2.1);
   moon.position.set(-4, 8, 6);
-  moon.castShadow = true;
-  moon.shadow.mapSize.set(1024, 1024);
+  moon.castShadow = !lowPower;
+  moon.shadow.mapSize.set(768, 768);
   moon.shadow.camera.near = 0.1; moon.shadow.camera.far = 42;
   moon.shadow.camera.left = -9; moon.shadow.camera.right = 9;
   moon.shadow.camera.top = 9; moon.shadow.camera.bottom = -7;
@@ -130,7 +139,8 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
     const group = new THREE.Group();
     group.position.z = -(index + 1) * GATE_SPACING;
     scene.add(group);
-    addBox(group, new THREE.BoxGeometry(4.25, 3.8, .55), darkMat, [0, 1.92, -.27], { castShadow: false });
+    // The door leaves are the gate. Keeping a solid panel behind them made every
+    // opened seal look like a dead end and hid all the gates beyond it.
     const stone = new THREE.MeshStandardMaterial({ color: 0x303b41, map: makeMetalTexture(), metalness: .62, roughness: .7 });
     const postGeo = new THREE.BoxGeometry(.42, 4.15, .7);
     addBox(group, postGeo, stone, [-2.18, 2.02, 0]);
@@ -261,7 +271,7 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
   }
 
   // Low-contrast floating ice dust catches the corridor lamps.
-  const dustCount = 420;
+  const dustCount = lowPower ? 150 : 260;
   const dustPositions = new Float32Array(dustCount * 3);
   for (let i = 0; i < dustCount; i++) {
     dustPositions[i * 3] = (Math.random() - .5) * 8.5;
@@ -351,6 +361,30 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
   }
+
+  let lastFrameTime = 0, frameSampleCount = 0, frameTimeTotal = 0;
+  function adaptRenderScale(timestamp) {
+    if (lastFrameTime) {
+      frameTimeTotal += timestamp - lastFrameTime;
+      frameSampleCount++;
+      if (frameSampleCount >= 90) {
+        const averageFrameMs = frameTimeTotal / frameSampleCount;
+        const nextScale = averageFrameMs > 22
+          ? Math.max(minRenderScale, renderScale * .9)
+          : averageFrameMs < 15
+            ? Math.min(maxRenderScale, renderScale * 1.04)
+            : renderScale;
+        if (Math.abs(nextScale - renderScale) > .015) {
+          renderScale = nextScale;
+          renderer.setPixelRatio(renderScale);
+          renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+        }
+        frameSampleCount = 0;
+        frameTimeTotal = 0;
+      }
+    }
+    lastFrameTime = timestamp;
+  }
   const resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(canvas);
   window.addEventListener("resize", resize);
@@ -403,29 +437,36 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
     else if (focusedItem.userData?.puzzleIndex === activeIndex() && registerActive) onSelect(activeIndex());
   });
 
-  function animate() {
+  let lastFocusCheck = 0;
+  function animate(timestamp = performance.now()) {
     requestAnimationFrame(animate);
+    adaptRenderScale(timestamp);
     const delta = Math.min(.05, clock.getDelta());
     const targetZ = finished ? 5.2 - (GATE_COUNT - 1) * GATE_SPACING - 7.5 : 5.2 - solvedCount * GATE_SPACING;
     camera.position.z = THREE.MathUtils.damp(camera.position.z, targetZ, .68, delta);
     camera.position.y = 1.78 + Math.sin(clock.elapsedTime * .63) * .014;
     const target = scratch.set(Math.sin(yaw) * 12, 1.83 + pitch * 8, camera.position.z - 12);
     camera.lookAt(target);
-    if (flashlightOn && !tooth.userData.collected) {
+    // Center-ray interaction checks only need to refresh a few times a second.
+    // Pointer hover still updates immediately in the pointer-move handler.
+    if (timestamp - lastFocusCheck >= 80) {
+      lastFocusCheck = timestamp;
+      if (flashlightOn && !tooth.userData.collected) {
+        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+        const hit = raycaster.intersectObject(tooth, true).length > 0;
+        if (hit && !toothRevealed) { toothRevealed = true; brassMat.opacity = 1; brassMat.emissiveIntensity = .35; }
+        tooth.visible = !tooth.userData.collected;
+      }
       raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-      const hit = raycaster.intersectObject(tooth, true).length > 0;
-      if (hit && !toothRevealed) { toothRevealed = true; brassMat.opacity = 1; brassMat.emissiveIntensity = .35; }
-      tooth.visible = !tooth.userData.collected;
+      const activeEvidence = registerActive ? gates[activeIndex()]?.evidence : null;
+      const focusTargets = [...items.filter(item => item.visible && !item.userData.collected && (item !== tooth || toothRevealed)), ...(activeEvidence ? [activeEvidence] : [])];
+      const focused = raycaster.intersectObjects(focusTargets, true)[0];
+      let nextFocus = null;
+      if (focused) {
+        nextFocus = focusTargets.find(item => { let node = focused.object; while (node) { if (node === item) return true; node = node.parent; } return false; }) || null;
+      }
+      if (nextFocus !== focusedItem) { focusedItem = nextFocus; onItemFocus(focusedItem?.userData.itemId || (focusedItem?.userData.puzzleIndex !== undefined ? "artifact" : null)); }
     }
-    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-    const activeEvidence = registerActive ? gates[activeIndex()]?.evidence : null;
-    const focusTargets = [...items.filter(item => item.visible && !item.userData.collected && (item !== tooth || toothRevealed)), ...(activeEvidence ? [activeEvidence] : [])];
-    const focused = raycaster.intersectObjects(focusTargets, true)[0];
-    let nextFocus = null;
-    if (focused) {
-      nextFocus = focusTargets.find(item => { let node = focused.object; while (node) { if (node === item) return true; node = node.parent; } return false; }) || null;
-    }
-    if (nextFocus !== focusedItem) { focusedItem = nextFocus; onItemFocus(focusedItem?.userData.itemId || (focusedItem?.userData.puzzleIndex !== undefined ? "artifact" : null)); }
     const creep = Math.min(1, solvedCount / 9);
     gates.forEach((gate, i) => {
       const amount = i < solvedCount ? 1 : 0;
