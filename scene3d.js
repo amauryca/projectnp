@@ -63,8 +63,8 @@ export function createGateScene(canvas, onSelect) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a1017);
   scene.fog = new THREE.FogExp2(0x0a1017, 0.018);
-  const camera = new THREE.PerspectiveCamera(53, canvas.clientWidth / Math.max(canvas.clientHeight, 1), 0.1, 150);
-  camera.position.set(0, 1.78, 4.2);
+  const camera = new THREE.PerspectiveCamera(58, canvas.clientWidth / Math.max(canvas.clientHeight, 1), 0.1, 150);
+  camera.position.set(0, 1.78, 5.2);
 
   const ambient = new THREE.HemisphereLight(0x9baeb6, 0x101317, 1.12);
   scene.add(ambient);
@@ -99,11 +99,13 @@ export function createGateScene(canvas, onSelect) {
   const lamps = [];
   for (let i = 0; i < 31; i++) {
     const z = 3 - i * 4.0;
-    for (const x of [-4.92, 4.92]) addBox(scene, ribGeo, ribMat, [x, 2.42, z]);
-    addBox(scene, topRibGeo, ribMat, [0, 4.85, z]);
-    addBox(scene, floorRibGeo, ribMat, [0, .02, z]);
-    const lamp = new THREE.PointLight(0x9eb9c3, .55, 8, 2);
-    lamp.position.set(0, 4.58, z - .35); scene.add(lamp); lamps.push(lamp);
+    for (const x of [-4.92, 4.92]) addBox(scene, ribGeo, ribMat, [x, 2.42, z], { castShadow: false });
+    addBox(scene, topRibGeo, ribMat, [0, 4.85, z], { castShadow: false });
+    addBox(scene, floorRibGeo, ribMat, [0, .02, z], { castShadow: false });
+    if (i % 4 === 0) {
+      const lamp = new THREE.PointLight(0x9eb9c3, .62, 10, 2);
+      lamp.position.set(0, 4.58, z - .35); scene.add(lamp); lamps.push(lamp);
+    }
     addBox(scene, new THREE.BoxGeometry(.42, .06, .24), trimMat, [0, 4.85, z - .38], { castShadow: false });
   }
 
@@ -288,7 +290,7 @@ export function createGateScene(canvas, onSelect) {
   function animate() {
     requestAnimationFrame(animate);
     const delta = Math.min(.05, clock.getDelta());
-    const targetZ = finished ? 4.2 - (GATE_COUNT - 1) * GATE_SPACING - 7.5 : 4.2 - solvedCount * GATE_SPACING;
+    const targetZ = finished ? 5.2 - (GATE_COUNT - 1) * GATE_SPACING - 7.5 : 5.2 - solvedCount * GATE_SPACING;
     camera.position.z = THREE.MathUtils.damp(camera.position.z, targetZ, .68, delta);
     camera.position.y = 1.78 + Math.sin(clock.elapsedTime * .63) * .014;
     const target = scratch.set(Math.sin(yaw) * 12, 1.83 + pitch * 8, camera.position.z - 12);
