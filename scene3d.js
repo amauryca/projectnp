@@ -26,6 +26,15 @@ function makeMetalTexture() {
   return texture;
 }
 
+function createEvidenceTexture(text, color = "#b9d0d4") {
+  const canvas = document.createElement("canvas"); canvas.width = 256; canvas.height = 128;
+  const ctx = canvas.getContext("2d"); ctx.fillStyle = "#0b1116"; ctx.fillRect(0, 0, 256, 128);
+  ctx.strokeStyle = "rgba(171,202,210,.65)"; ctx.lineWidth = 3; ctx.strokeRect(5, 5, 246, 118);
+  ctx.fillStyle = color; ctx.font = "600 27px monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(text, 128, 64);
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; return texture;
+}
+
 function addBox(parent, geometry, material, position, options = {}) {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(...position);
@@ -111,6 +120,8 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
 
   const gates = [];
   const locks = [];
+  const evidenceObjects = [];
+  const cryptexRings = [];
   const lockBaseMat = new THREE.MeshStandardMaterial({ color: 0x9ab5bc, emissive: 0x1a343c, emissiveIntensity: .55, metalness: .68, roughness: .32 });
   const lockSolvedMat = new THREE.MeshStandardMaterial({ color: 0xc8e5df, emissive: 0x557e72, emissiveIntensity: 1.05, metalness: .58, roughness: .27 });
   const lockSealedMat = new THREE.MeshStandardMaterial({ color: 0x8e554d, emissive: 0x621a1a, emissiveIntensity: .75, metalness: .68, roughness: .35 });
@@ -166,7 +177,36 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
     lockLight.position.z = .25; lock.add(lockLight);
     const warning = new THREE.PointLight(0xa8483f, 0, 5.5, 2);
     warning.position.set(0, 3.8, .65); group.add(warning);
-    gates.push({ group, leaves, lock, lockLight, warning, stone, index });
+
+    let evidence = null, evidenceLight = null;
+    if (index > 0) {
+      evidence = new THREE.Group();
+      evidence.position.set(index % 2 ? -2.58 : 2.58, index === 8 ? .46 : 2.15, .54);
+      evidence.userData.puzzleIndex = index;
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x3b4e54, emissive: 0x152b33, emissiveIntensity: .45, metalness: .72, roughness: .34 });
+      const face = new THREE.Mesh(new THREE.BoxGeometry(.82, .72, .14), frameMat); evidence.add(face);
+      const card = new THREE.Mesh(new THREE.PlaneGeometry(.68, .54), new THREE.MeshBasicMaterial({ map: createEvidenceTexture(["", "PHOTO FILE", "CRYPTEX", "MIRROR", "SIGNAL", "NEGATIVE", "SURVEY", "RELIEF", "ROUTE", "CORE"][index]), side: THREE.DoubleSide }));
+      card.position.z = .081; evidence.add(card);
+      if (index === 2) {
+        const model = new THREE.Group(); model.position.set(0, -.78, .08); evidence.add(model);
+        for (let ringIndex = 0; ringIndex < 5; ringIndex++) {
+          const ring = new THREE.Group(); ring.position.x = (ringIndex - 2) * .25; ring.userData.ringIndex = ringIndex;
+          const barrel = new THREE.Mesh(new THREE.CylinderGeometry(.23, .23, .22, 24, 1, false), new THREE.MeshStandardMaterial({ color: 0x92764d, metalness: .83, roughness: .27 }));
+          barrel.rotation.z = Math.PI / 2; ring.add(barrel);
+          const band = new THREE.Mesh(new THREE.TorusGeometry(.215, .035, 8, 28), new THREE.MeshStandardMaterial({ color: 0xc0a16a, metalness: .9, roughness: .2 }));
+          band.rotation.y = Math.PI / 2; ring.add(band);
+          const labelMat = new THREE.SpriteMaterial({ map: createEvidenceTexture("A", "#ede0c2"), transparent: true, depthWrite: false });
+          const label = new THREE.Sprite(labelMat); label.scale.set(.22, .16, 1); label.position.z = .24; ring.add(label);
+          ring.userData.label = label; model.add(ring); cryptexRings.push(ring);
+        }
+        const spindle = new THREE.Mesh(new THREE.CylinderGeometry(.09, .09, 1.42, 16), new THREE.MeshStandardMaterial({ color: 0x352d23, metalness: .7, roughness: .3 }));
+        spindle.rotation.z = Math.PI / 2; model.add(spindle);
+        evidence.userData.cryptex = model; model.visible = false;
+      }
+      group.add(evidence); evidenceObjects.push(evidence);
+      evidenceLight = new THREE.PointLight(0x9cc5cf, .16, 3.5, 2); evidenceLight.position.copy(evidence.position); group.add(evidenceLight);
+    }
+    gates.push({ group, leaves, lock, lockLight, warning, stone, index, evidence, evidenceLight });
     locks.push(lock);
   }
   for (let i = 0; i < GATE_COUNT; i++) makeGate(i);
@@ -241,7 +281,28 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
   const scratch = new THREE.Vector3();
   const activeIndex = () => Math.min(Math.max(solvedCount, 0), GATE_COUNT - 1);
 
+  let cryptexVisible = false;
   function setRegisterActive(active) { registerActive = Boolean(active); }
+  function setCollectedItems(ids = []) {
+    const collected = new Set(ids);
+    for (const item of items) {
+      item.userData.collected = collected.has(item.userData.itemId);
+      if (item === tooth && item.userData.collected) { toothRevealed = true; brassMat.opacity = 1; brassMat.emissiveIntensity = .35; }
+      item.visible = !item.userData.collected;
+    }
+  }
+  function setCryptexVisible(visible) {
+    cryptexVisible = Boolean(visible);
+    const model = gates[2]?.evidence?.userData.cryptex;
+    if (model) model.visible = cryptexVisible;
+  }
+  function setCryptexLetters(letters) {
+    cryptexRings.forEach((ring,i)=>{
+      const letter=String(letters[i]||"A").slice(0,1);
+      ring.userData.label.material.map?.dispose(); ring.userData.label.material.map=createEvidenceTexture(letter,"#f4e4c2"); ring.userData.label.material.needsUpdate=true;
+      const code=letter.charCodeAt(0)-65; ring.rotation.x=code*(Math.PI*2/26);
+    });
+  }
   function setFlashlight(active) {
     flashlightOn = Boolean(active);
     lampBeam.intensity = flashlightOn ? 58 : 0;
@@ -273,6 +334,8 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
       const current = i === activeIndex();
       gate.lockLight.color.copy(i < solvedCount ? new THREE.Color(0x85c6b1) : new THREE.Color(current ? 0xb5d5da : 0x774542));
       gate.lockLight.intensity = i < solvedCount ? .7 : current ? 1.15 : .24;
+      if (gate.evidenceLight) gate.evidenceLight.intensity = registerActive && i === activeIndex() ? .9 : .05;
+      if (gate.evidence) gate.evidence.traverse(object => { if (object.material?.emissive) object.material.emissiveIntensity = registerActive && i === activeIndex() ? .9 : .22; });
       gate.warning.userData.baseIntensity = Math.max(0, creep - .18) * (current ? 2.2 : .72);
       gate.warning.intensity = gate.warning.userData.baseIntensity;
       gate.stone.color.set(0x303b41).lerp(new THREE.Color(0x382528), creep * .7);
@@ -312,9 +375,9 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
     } else {
       eventPoint(event); raycaster.setFromCamera(pointer, camera);
       const hitItem = raycaster.intersectObjects(items.filter(item => item.visible && !item.userData.collected && (item !== tooth || toothRevealed)), true).length > 0;
-      const activeLock = locks[activeIndex()];
-      const hit = registerActive && raycaster.intersectObject(activeLock, true).length > 0;
-      canvas.style.cursor = hitItem || hit ? "pointer" : "grab";
+      const activeEvidence = gates[activeIndex()]?.evidence;
+      const hitEvidence = registerActive && activeEvidence && raycaster.intersectObject(activeEvidence, true).length > 0;
+      canvas.style.cursor = hitItem || hitEvidence ? "pointer" : "grab";
     }
   }
   function onPointerUp(event) {
@@ -325,15 +388,20 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
       const itemHit = raycaster.intersectObjects(items.filter(item => item.visible && !item.userData.collected && (item !== tooth || toothRevealed)), true)[0];
       if (itemHit) { collectItem(itemHit.object.parent === lamp ? lamp : itemHit.object.parent === tooth ? tooth : itemHit.object); return; }
       const active = activeIndex();
-      const hits = raycaster.intersectObject(locks[active], true);
-      if (registerActive && hits.length) onSelect(active);
+      const evidence = gates[active]?.evidence;
+      const evidenceHit = evidence && raycaster.intersectObject(evidence, true).length > 0;
+      if (registerActive && evidenceHit) onSelect(active);
     }
   }
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointercancel", () => { dragging = false; });
-  window.addEventListener("keydown", event => { if (event.key.toLowerCase() === "e" && focusedItem) collectItem(focusedItem); });
+  window.addEventListener("keydown", event => {
+    if (event.key.toLowerCase() !== "e" || !focusedItem) return;
+    if (focusedItem === lamp || focusedItem === tooth) collectItem(focusedItem);
+    else if (focusedItem.userData?.puzzleIndex === activeIndex() && registerActive) onSelect(activeIndex());
+  });
 
   function animate() {
     requestAnimationFrame(animate);
@@ -350,10 +418,14 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
       tooth.visible = !tooth.userData.collected;
     }
     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-    const focused = raycaster.intersectObjects(items.filter(item => item.visible && !item.userData.collected && (item !== tooth || toothRevealed)), true)[0];
+    const activeEvidence = registerActive ? gates[activeIndex()]?.evidence : null;
+    const focusTargets = [...items.filter(item => item.visible && !item.userData.collected && (item !== tooth || toothRevealed)), ...(activeEvidence ? [activeEvidence] : [])];
+    const focused = raycaster.intersectObjects(focusTargets, true)[0];
     let nextFocus = null;
-    if (focused) nextFocus = items.find(item => { let node = focused.object; while (node) { if (node === item) return true; node = node.parent; } return false; }) || null;
-    if (nextFocus !== focusedItem) { focusedItem = nextFocus; onItemFocus(focusedItem?.userData.itemId || null); }
+    if (focused) {
+      nextFocus = focusTargets.find(item => { let node = focused.object; while (node) { if (node === item) return true; node = node.parent; } return false; }) || null;
+    }
+    if (nextFocus !== focusedItem) { focusedItem = nextFocus; onItemFocus(focusedItem?.userData.itemId || (focusedItem?.userData.puzzleIndex !== undefined ? "artifact" : null)); }
     const creep = Math.min(1, solvedCount / 9);
     gates.forEach((gate, i) => {
       const amount = i < solvedCount ? 1 : 0;
@@ -363,6 +435,8 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
       gate.leaves[0].pivot.rotation.y = THREE.MathUtils.damp(gate.leaves[0].pivot.rotation.y, leftTarget, 2.05, delta);
       gate.leaves[1].pivot.rotation.y = THREE.MathUtils.damp(gate.leaves[1].pivot.rotation.y, rightTarget, 2.05, delta);
       gate.lock.rotation.z = Math.sin(clock.elapsedTime * .6 + i) * .025;
+      if (gate.evidenceLight && i === activeIndex()) gate.evidenceLight.intensity = registerActive ? .76 + Math.sin(clock.elapsedTime * 1.15) * .14 : .05;
+      if (gate.evidence?.userData.cryptex) gate.evidence.userData.cryptex.visible = cryptexVisible && i === 2;
       gate.warning.intensity = gate.warning.userData.baseIntensity * (.94 + Math.sin(clock.elapsedTime * (2.2 + creep * 4) + i) * .06 * creep);
     });
     const positions = dustGeometry.attributes.position.array;
@@ -382,6 +456,9 @@ export function createGateScene(canvas, onSelect, onItemFound = () => {}, onItem
     resize,
     setSolvedCount,
     setRegisterActive,
+    setCollectedItems,
+    setCryptexVisible,
+    setCryptexLetters,
     setFlashlight,
     get flashlightOn() { return flashlightOn; },
     dispose() {

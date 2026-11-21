@@ -1,335 +1,198 @@
 (() => {
   const $ = (selector) => document.querySelector(selector);
-  const canvas = $("#gate-scene");
-  const tapeDialog = $("#tape-dialog");
-  const sealDialog = $("#seal-dialog");
+  const canvas = $("#gate-scene"), puzzleDialog = $("#puzzle-dialog"), tapeDialog = $("#tape-dialog");
   const ruffleContainer = $("#ruffle-container");
-  const escalatingAudio = $("#escalating-audio");
-  const SAVE_KEY = "np-gate-09-progress-v1";
-  const AWAY_CUE_MS = 30000;
-  const AUDIO_KEY = "np-gate-09-audio-v1";
-  let audioEnabled = localStorage.getItem(AUDIO_KEY) !== "off";
-  let awaySince = document.hidden ? Date.now() : null;
-  let awayTimer = null, awayCueStarted = false, awayCueComplete = false, awayCueFailed = false;
-  let audioContext = null, escalationBus = null, cueRun = 0;
+  const SAVE_KEY = "np-gate-09-progress-v2";
   const puzzles = window.NP_PUZZLES;
-  let progress = readProgress();
-  let gamePlayer = null;
-  let currentPuzzle = -1;
-  let sceneController = null;
+  let progress = readProgress(), sceneController = null, currentPuzzle = -1, gamePlayer = null;
+  const MUSIC_KEY = "np-gate-09-music-v1";
+  let hintIndex = 0, musicOn = false, musicContext = null, musicMaster = null, musicNodes = [];
 
   function readProgress() {
     try {
-      const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "{}");
-      const solved = Array.isArray(saved.solved) ? [...new Set(saved.solved.filter(n => Number.isInteger(n) && n >= 0 && n < 10))] : [];
-      const inventory = Array.isArray(saved.inventory) ? [...new Set(saved.inventory.filter(item => ["flashlight", "gate_tooth"].includes(item)))] : [];
-      return {
-        registerActivated: Boolean(saved.registerActivated), inventory,
-        unlocked: saved.registerActivated ? Math.max(Number(saved.unlocked) || 0, solved.length ? Math.max(...solved) + 1 : 1) : 0,
-        solved, hints: saved.hints && typeof saved.hints === "object" ? saved.hints : {},
-        fragments: Array.isArray(saved.fragments) ? saved.fragments.slice(0,10) : [], finished: Boolean(saved.finished)
-      };
-    } catch { return { registerActivated: false, inventory: [], unlocked: 0, solved: [], hints: {}, fragments: [], finished: false }; }
+      const data = JSON.parse(localStorage.getItem(SAVE_KEY) || "{}");
+      const solved = Array.isArray(data.solved) ? [...new Set(data.solved.filter(n => Number.isInteger(n) && n >= 0 && n < 10))].sort((a,b) => a-b) : [];
+      // Enforce a contiguous route. A later saved seal can never skip an earlier one.
+      const ordered = []; for (let i = 0; i < solved.length && solved[i] === i; i++) ordered.push(i);
+      return { solved: ordered, inventory: Array.isArray(data.inventory) ? [...new Set(data.inventory.filter(x => ["flashlight","gate_tooth","cryptex_key"].includes(x)))] : [], hints: data.hints || {}, fragments: Array.isArray(data.fragments) ? data.fragments.slice(0,10) : [], registerActivated: Boolean(data.registerActivated && ordered.includes(0)), finished: ordered.length === 10 };
+    } catch { return { solved: [], inventory: [], hints: {}, fragments: [], registerActivated: false, finished: false }; }
   }
   function saveProgress() { localStorage.setItem(SAVE_KEY, JSON.stringify(progress)); }
-  function updateClock() { $("#utc-clock").textContent = new Date().toISOString().slice(11, 19) + " UTC"; }
-
-  function updateAudioControl() {
-    const button = $("#audio-toggle");
-    if (!button) return;
-    button.textContent = `AUDIO: ${audioEnabled ? "ON" : "OFF"}`;
-    button.setAttribute("aria-pressed", String(audioEnabled));
+  function hasItem(id) { return progress.inventory.includes(id); }
+  function currentIndex() { return Math.min(progress.solved.length, puzzles.length - 1); }
+  function showToast(message) {
+    const toast = $("#toast-message"); toast.textContent = message; toast.classList.add("visible");
+    clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove("visible"), 2600);
   }
-  function distortionCurve(amount) {
-    const samples = 512, curve = new Float32Array(samples), drive = 1 + amount * 18, normalizer = Math.tanh(drive);
-    for (let i = 0; i < samples; i++) {
-      const x = i * 2 / (samples - 1) - 1;
-      curve[i] = Math.tanh(x * drive) / normalizer;
-    }
-    return curve;
-  }
-  function createAudioGraph() {
-    if (audioContext) return escalationBus;
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass || !escalatingAudio) return null;
-    try {
-      audioContext = new AudioContextClass();
-      const source = audioContext.createMediaElementSource(escalatingAudio);
-      const shaper = audioContext.createWaveShaper();
-      const filter = audioContext.createBiquadFilter();
-      const gain = audioContext.createGain();
-      shaper.oversample = "4x"; shaper.curve = distortionCurve(0);
-      filter.type = "lowpass"; filter.frequency.value = 11000;
-      source.connect(shaper).connect(filter).connect(gain).connect(audioContext.destination);
-      escalationBus = { gain, shaper, filter };
-      return escalationBus;
-    } catch { audioContext = null; escalationBus = null; return null; }
-  }
-  function primeAudio() {
-    if (!audioEnabled) return;
-    createAudioGraph();
-    if (audioContext?.state === "suspended") audioContext.resume().catch(() => {});
-  }
-  function stopAudioCues() {
-    cueRun++;
-    if (escalatingAudio) { escalatingAudio.pause(); escalatingAudio.currentTime = 0; escalatingAudio.playbackRate = 1; }
-    if (audioContext && escalationBus) escalationBus.gain.gain.setTargetAtTime(0, audioContext.currentTime, .04);
-  }
-  const waitForAudio = (audio, run, ms) => new Promise(resolve => {
-    let done = false;
-    const finish = () => { if (done) return; done = true; clearTimeout(timer); audio.removeEventListener("ended", finish); resolve(); };
-    const timer = setTimeout(finish, ms);
-    audio.addEventListener("ended", finish, { once: true });
-    if (run !== cueRun) finish();
-  });
-  async function playEscalatingWarning(onStarted = () => {}, cycle = 0) {
-    if (!audioEnabled || !escalatingAudio) return false;
-    stopAudioCues(); primeAudio();
-    const run = cueRun;
-    const rise = Math.min(.28, cycle * .035);
-    const gainStages = [[.07,.14],[.13,.24],[.22,.39],[.36,.56]].map(([a,b]) => [Math.min(.45,a+rise*.45),Math.min(.86,b+rise)]);
-    const distortionStages = [[.025,.07],[.09,.17],[.2,.32],[.36,.56]].map(([a,b]) => [Math.min(.45,a+rise),Math.min(.82,b+rise*1.25)]);
-    const duration = Number.isFinite(escalatingAudio.duration) && escalatingAudio.duration > 0 ? escalatingAudio.duration : 3.4;
-    for (let i = 0; i < gainStages.length; i++) {
-      if (run !== cueRun || !audioEnabled) return false;
-      escalatingAudio.currentTime = 0; escalatingAudio.playbackRate = 1 - i * .025;
-      const now = audioContext?.currentTime || 0, [from,to] = gainStages[i], [soft,harsh] = distortionStages[i];
-      escalatingAudio.volume = audioContext && escalationBus ? 1 : to;
-      if (audioContext && escalationBus) {
-        const gain = escalationBus.gain.gain;
-        gain.cancelScheduledValues(now); gain.setValueAtTime(from,now); gain.linearRampToValueAtTime(to,now+duration);
-        escalationBus.shaper.curve = distortionCurve(soft);
-        escalationBus.filter.frequency.cancelScheduledValues(now);
-        escalationBus.filter.frequency.setValueAtTime(10000-i*1300,now);
-        escalationBus.filter.frequency.linearRampToValueAtTime(7600-i*1250,now+duration);
-        setTimeout(()=>{if(run===cueRun&&escalationBus)escalationBus.shaper.curve=distortionCurve(harsh);},duration*500);
-      }
-      try { await escalatingAudio.play(); onStarted(); }
-      catch { return false; }
-      await waitForAudio(escalatingAudio,run,duration*1000+250);
-      escalatingAudio.pause();
-      if(run!==cueRun||!audioEnabled)return false;
-      if(i<gainStages.length-1)await new Promise(resolve=>setTimeout(resolve,380));
-    }
-    if(run===cueRun){
-      escalatingAudio.playbackRate=1;
-      if(audioContext&&escalationBus){
-        escalationBus.gain.gain.setTargetAtTime(0,audioContext.currentTime,.18);
-        escalationBus.shaper.curve=distortionCurve(0);
-        escalationBus.filter.frequency.setTargetAtTime(11000,audioContext.currentTime,.18);
-      }
-    }
-    return true;
-  }
-  function noteActivity() { primeAudio(); }
-  async function runAwayCue() {
-    let cycle = 0;
-    while (awaySince !== null && audioEnabled) {
-      const completed = await playEscalatingWarning(() => { awayCueStarted = true; }, cycle);
-      awayCueComplete = completed; awayCueFailed = !completed;
-      if (!completed || awaySince === null) return;
-      cycle++;
-      await new Promise(resolve => setTimeout(resolve, 15000));
-    }
-  }
-  function markAway() {
-    if (awaySince !== null) return;
-    awaySince = Date.now(); awayCueStarted = false; awayCueComplete = false; awayCueFailed = false;
-    clearTimeout(awayTimer);
-    awayTimer = setTimeout(() => { if (awaySince !== null && !awayCueStarted && audioEnabled) runAwayCue(); }, AWAY_CUE_MS);
-  }
-  function returnToPage() {
-    const awayDuration = awaySince === null ? 0 : Date.now() - awaySince;
-    clearTimeout(awayTimer); awayTimer = null; awaySince = null;
-    primeAudio();
-    if (awayDuration >= AWAY_CUE_MS && audioEnabled && (!awayCueStarted || awayCueFailed || (!awayCueComplete && escalatingAudio?.paused))) {
-      const cycle = Math.floor(Math.max(0, awayDuration - AWAY_CUE_MS) / 60000);
-      playEscalatingWarning(() => { awayCueStarted = true; }, cycle).then(done => { awayCueComplete = done; awayCueFailed = !done; });
-    }
-  }
-  function initializePresenceCue() {
-    const audioButton = $("#audio-toggle");
-    updateAudioControl();
-    audioButton?.addEventListener("click", () => {
-      audioEnabled = !audioEnabled; localStorage.setItem(AUDIO_KEY,audioEnabled?"on":"off");
-      if(!audioEnabled)stopAudioCues(); else primeAudio();
-      updateAudioControl();
-    });
-    ["pointerdown","keydown","touchstart","click"].forEach(type=>window.addEventListener(type,noteActivity,{passive:type!=="keydown"}));
-    document.addEventListener("visibilitychange",()=>document.hidden?markAway():returnToPage());
-    window.addEventListener("blur",markAway);
-    window.addEventListener("focus",()=>{if(!document.hidden)returnToPage();});
-    if(document.hidden)markAway();
-  }
-
-  function inventoryHas(item) { return progress.inventory.includes(item); }
-  function renderInventory() {
-    const list=$("#inventory-items");if(!list)return;list.replaceChildren();
-    const items=[{id:"flashlight",name:"HAND LAMP",detail:"Beam: focused"},{id:"gate_tooth",name:"GATE TOOTH",detail:"Brass / transit assembly"}];
-    items.forEach(item=>{const found=inventoryHas(item.id),row=document.createElement("div");row.className=`inventory-item${found?" found":""}`;const text=document.createElement("span");text.innerHTML=`<b>${item.name}</b><small>${found?item.detail:"NOT RECOVERED"}</small>`;row.append(text);
-      if(item.id==="flashlight"){const toggle=document.createElement("button");toggle.type="button";toggle.className="inventory-use";toggle.textContent=sceneController?.flashlightOn?"LAMP ON":"USE LAMP";toggle.disabled=!found;toggle.setAttribute("aria-pressed",String(Boolean(sceneController?.flashlightOn)));toggle.addEventListener("click",()=>{const on=!sceneController?.flashlightOn;sceneController?.setFlashlight(on);toggle.textContent=on?"LAMP ON":"USE LAMP";toggle.setAttribute("aria-pressed",String(on));});row.append(toggle);}
-      else {const state=document.createElement("span");state.className="inventory-state";state.textContent=found?"SECURED":"—";row.append(state);}list.append(row);
-    });
-  }
-  function onSceneItemFound(item) {
-    if(!["flashlight","gate_tooth"].includes(item)||inventoryHas(item))return;
-    progress.inventory.push(item);
-    if(item==="flashlight")sceneController?.setFlashlight(true);
-    saveProgress();renderInventory();renderSealList();
-    const feedback=$("#survey-status");feedback.textContent=item==="flashlight"?"HAND LAMP RECOVERED — USE IT TO SWEEP THE GATE":"GATE TOOTH RECOVERED — SEAL REGISTER ENGAGED";
-    if(item==="gate_tooth"&&inventoryHas("flashlight")){
-      progress.registerActivated=true;progress.unlocked=Math.max(progress.unlocked,1);saveProgress();
-      sceneController?.setRegisterActive(true);renderSealList();
-      feedback.textContent="REGISTER ACTIVE — FIRST ROUTE AVAILABLE";
-      const note=$("#transmission-card");note.innerHTML='<div class="transmission-header"><span>INCOMING / SURVEY 00</span><span class="rec-dot">● LIVE</span></div><p>“A tooth is missing. The gate will remember the hand that returns it.”</p><span class="transmission-footer">SOURCE: ACCESS CHAMBER</span>';
-      const recover=$("#recover-button");recover.classList.add("ready-pulse");setTimeout(()=>recover.classList.remove("ready-pulse"),1600);
-    }
-  }
-  function onSceneFocusItem(item) {
-    const prompt=$("#scene-prompt");if(!prompt)return;
-    if(!item){prompt.classList.remove("visible");return;}
-    prompt.textContent=item==="flashlight"?"RECOVER HAND LAMP · CLICK":"GATE TOOTH REVEALED · PRESS E TO TAKE";
-    prompt.classList.add("visible");
-  }
-  function setupCanvas() { sceneController?.resize(); }
-  async function initializeThreeScene() {
-    try {
-      const { createGateScene } = await import("./scene3d.js");
-      sceneController = createGateScene(canvas, index => openSeal(index), onSceneItemFound, onSceneFocusItem);
-      sceneController.setSolvedCount(progress.solved.length, progress.finished);
-      sceneController.setRegisterActive(progress.registerActivated);
-      sceneController.setFlashlight(inventoryHas("flashlight"));
-    } catch (error) {
-      const message = document.createElement("div");
-      message.className = "scene-error";
-      message.textContent = "3D SCENE UNAVAILABLE — RELOAD THE ARCHIVE";
-      canvas.after(message);
-      console.error("North Pole 3D scene failed to initialize", error);
-    }
-  }
-  function renderSealList() {
-    sceneController?.setSolvedCount(progress.solved.length, progress.finished);
-    const grid=$("#seal-grid");grid.replaceChildren();
-    puzzles.forEach((puzzle,i)=>{const button=document.createElement("button");const solved=progress.solved.includes(i),available=progress.registerActivated&&i<progress.unlocked;button.className="seal-cell"+(available?" ready":"")+(solved?" solved":"")+(available&&!solved?" available":"");button.textContent=String(i+1).padStart(2,"0");button.disabled=!available;button.setAttribute("aria-label",`${solved?"Solved":available?"Available":"Locked"} puzzle ${i+1}: ${puzzle.name}`);button.addEventListener("click",()=>openSeal(i));grid.append(button);});
-    const count=String(progress.solved.length).padStart(2,"0");$("#seal-status").textContent=`SEALS: ${count} / 10`;$("#seal-count").textContent=`${count}—10`;$("#gate-state").textContent=progress.finished?"OPEN / RECORDING":progress.registerActivated?(progress.solved.length?`${String(progress.solved.length).padStart(2,"0")} SEALS RELEASED`:"REGISTER ACTIVE"):"SURVEY REQUIRED";
+  function renderStage() {
+    const index = currentIndex(), stage = puzzles[index];
+    $("#stage-count").textContent = `STAGE ${String(index + 1).padStart(2,"0")} / 10`;
+    $("#stage-title").textContent = progress.finished ? "The Route Is Open" : stage.name;
+    $("#stage-objective").textContent = progress.finished ? "The chamber is quiet. The record is complete." : stage.objective;
+    $("#gate-state").textContent = progress.finished ? "PASSAGE OPEN" : progress.registerActivated ? `SEAL ${String(index + 1).padStart(2,"0")} ACTIVE` : "SURVEY REQUIRED";
+    const progressBar = $("#stage-progress"); progressBar.replaceChildren();
+    for (let i=0;i<10;i++) { const dot=document.createElement("i"); dot.className = i < progress.solved.length ? "complete" : i === index && !progress.finished ? "current" : ""; progressBar.append(dot); }
     renderInventory();
-    const recover=$("#recover-button");recover.disabled=!progress.registerActivated;recover.setAttribute("aria-disabled",String(!progress.registerActivated));
-    $("#survey-status").textContent=progress.registerActivated?"REGISTER ACTIVE — FIRST ROUTE AVAILABLE":inventoryHas("gate_tooth")?"TOOTH RECOVERED — REGISTER READY":inventoryHas("flashlight")?"SWEEP THE FIRST GATE WITH THE LAMP":"SURVEY THE CHAMBER; RECOVER THE LAMP";
+    sceneController?.setRegisterActive(progress.registerActivated);
+    sceneController?.setSolvedCount(progress.solved.length, progress.finished);
   }
-  function openSeal(i) {
-    if(!progress.registerActivated)return;
-    const puzzle=puzzles[i],available=i<progress.unlocked,solved=progress.solved.includes(i);
-    $("#seal-kicker").textContent=`SEAL ${String(i+1).padStart(2,"0")} / ${puzzle.label}`;$("#seal-heading").textContent=puzzle.name;$("#seal-description").textContent=puzzle.note;
-    const body=$("#puzzle-body"),form=$("#puzzle-form"),hint=$("#hint-button"),record=$("#seal-record");
-    currentPuzzle=i;
-    if(!available){body.innerHTML='<div class="locked-record"><span class="locked-glyph">×</span><b>NO AUTHORIZED ENTRY</b><span>The previous seal has not released this record.</span></div>';form.hidden=true;hint.hidden=true;record.textContent="THE LOCK IS COLD.";}
-    else {
-      body.innerHTML=puzzle.html;form.hidden=solved;hint.hidden=solved;record.textContent=solved?`RECOVERED FRAGMENT: ${progress.fragments[i]||puzzle.fragment}`:"Each solved record leaves one fragment in the gate.";
-      $("#puzzle-answer").value="";$("#puzzle-feedback").textContent=solved?"SEAL ALREADY RELEASED.":"";
-      const hintCount=Number(progress.hints[i])||0;hint.textContent=hintCount>=puzzle.hints.length?"HINT FILES EXHAUSTED":`REQUEST HINT ${String(hintCount+1).padStart(2,"0")} / 0${puzzle.hints.length}`;hint.disabled=hintCount>=puzzle.hints.length;
-      initializePuzzleWidget(i,body);
+  function renderInventory() {
+    const hud=$("#inventory-hud"); if(!hud)return; hud.replaceChildren();
+    const items=[{id:"flashlight",label:"LAMP",icon:"◉"},{id:"gate_tooth",label:"TOOTH",icon:"⌁"},{id:"cryptex_key",label:"KEY",icon:"⚿"}];
+    items.forEach(item=>{
+      const button=document.createElement("button"); button.type="button"; button.className="inventory-slot"+(hasItem(item.id)?" found":""); button.disabled=!hasItem(item.id);
+      button.setAttribute("aria-label",hasItem(item.id)?`Inventory: ${item.label}`:`${item.label} not recovered`); button.title=hasItem(item.id)?item.label:"Not recovered";
+      button.innerHTML=`<span>${item.icon}</span><small>${item.label}</small>`;
+      if(item.id==="flashlight") { button.setAttribute("aria-pressed",String(Boolean(sceneController?.flashlightOn))); button.addEventListener("click",()=>{sceneController?.setFlashlight(!sceneController?.flashlightOn);renderInventory();}); }
+      hud.append(button);
+    });
+    const tape=document.createElement("button"); tape.type="button"; tape.className="inventory-slot record-slot"; tape.textContent="REC"; tape.title="Recovered tape"; tape.hidden=!progress.solved.includes(2); tape.addEventListener("click",openTape); hud.append(tape);
+  }
+  function onSceneFocusItem(id) {
+    const prompt=$("#scene-prompt"); if(!prompt)return;
+    if(!id){prompt.classList.remove("visible");return;}
+    const text={flashlight:"HAND LAMP · CLICK TO RECOVER",gate_tooth:"BRASS TOOTH · PRESS E TO TAKE",cryptex_key:"KEY RECOVERED",artifact:"EVIDENCE FOUND · CLICK TO INSPECT"};
+    prompt.textContent=text[id]||"EVIDENCE FOUND · CLICK TO INSPECT"; prompt.classList.add("visible");
+  }
+  function onSceneItemFound(id) {
+    if(!["flashlight","gate_tooth","cryptex_key"].includes(id)||hasItem(id))return;
+    progress.inventory.push(id);
+    if(id==="flashlight") { sceneController?.setFlashlight(true); saveProgress(); renderInventory(); showToast("HAND LAMP RECOVERED · SWEEP THE GATE"); return; }
+    if(id==="gate_tooth" && hasItem("flashlight")) {
+      progress.registerActivated=true; progress.solved=[0]; progress.fragments[0]=puzzles[0].fragment; saveProgress(); renderStage();
+      showToast("SURVEY COMPLETE · THE FIRST SEAL RELEASES"); return;
     }
-    sealDialog.showModal();
+    saveProgress(); renderInventory(); showToast("OBJECT RECOVERED");
   }
+  function onSceneSelect(index) {
+    // The only inspectable evidence is on the next unopened gate.
+    if(!progress.registerActivated || progress.finished || index!==currentIndex())return;
+    openPuzzle(index);
+  }
+  async function initializeScene() {
+    try {
+      const {createGateScene}=await import("./scene3d.js");
+      sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem);
+      sceneController.setRegisterActive(progress.registerActivated);
+      sceneController.setSolvedCount(progress.solved.length,progress.finished);
+      sceneController.setFlashlight(hasItem("flashlight"));
+      sceneController.setCollectedItems(progress.inventory);
+      sceneController.setCryptexLetters(["K","L","U","V","E"]);
+      renderStage();
+    } catch(error) { showToast("THE GATE SCENE COULD NOT LOAD · RELOAD THE ARCHIVE"); console.error("3D gate scene failed",error); }
+  }
+
+  function openPuzzle(index) {
+    if(index!==currentIndex() || index===0 || !progress.registerActivated)return;
+    const puzzle=puzzles[index]; currentPuzzle=index; hintIndex=Number(progress.hints[index])||0;
+    $("#puzzle-kicker").textContent=`EVIDENCE / ${String(index+1).padStart(2,"0")} · ${puzzle.label}`;
+    $("#puzzle-title").textContent=puzzle.name; $("#puzzle-intro").textContent=puzzle.objective;
+    $("#puzzle-feedback").textContent=""; $("#puzzle-feedback").classList.remove("error");
+    $("#puzzle-answer").value=""; $("#puzzle-form").hidden=true; $("#puzzle-action").hidden=true;
+    $("#hint-button").textContent=hintIndex>=puzzle.hints.length?"HINTS EXHAUSTED":`REQUEST HINT ${hintIndex+1} / ${puzzle.hints.length}`;
+    $("#hint-button").disabled=hintIndex>=puzzle.hints.length;
+    renderPuzzleWidget(puzzle);
+    if(puzzle.type==="cryptex")sceneController?.setCryptexVisible(true);
+    puzzleDialog.showModal();
+  }
+  function setAnswerMode(label="ENTER RECOVERED CODE") { $("#puzzle-form").hidden=false; $("#answer-label").textContent=label; }
+  function setActionMode(label="CONFIRM ↗") { const b=$("#puzzle-action"); b.textContent=label; b.hidden=false; }
+  function renderPuzzleWidget(p) {
+    const box=$("#puzzle-content"); box.replaceChildren();
+    if(p.type==="photo-order") {
+      box.innerHTML='<p class="artifact-copy">Five photographs were recovered out of sequence. Arrange them by <b>DateTimeOriginal</b> from earliest to latest. Read the letter burned into each frame.</p><div class="photo-sort" id="photo-sort"></div><div class="artifact-readout" id="photo-readout">ORDER NOT RECONSTRUCTED</div>';
+      const photos=[{id:"C",time:"1998:12:24 22:41:12",letter:"T"},{id:"E",time:"1998:12:24 23:03:54",letter:"H"},{id:"B",time:"1998:12:24 21:19:00",letter:"O"},{id:"D",time:"1998:12:24 20:55:15",letter:"N"},{id:"A",time:"1998:12:24 21:47:09",letter:"R"}];
+      const list=$("#photo-sort");
+      const draw=()=>{list.replaceChildren();photos.forEach((photo,i)=>{const row=document.createElement("div");row.className="photo-row";row.innerHTML=`<span class="photo-index">${String(i+1).padStart(2,"0")}</span><span class="photo-thumb frame-${photo.id}" aria-hidden="true"></span><span class="photo-name">FRAME ${photo.id}<small>DATETIMEORIGINAL · ${photo.time} · UTC−05:00</small></span><b class="photo-letter">${photo.letter}</b>`;const controls=document.createElement("span");controls.className="photo-controls";for(const [delta,label] of [[-1,"↑"],[1,"↓"]]){const button=document.createElement("button");button.type="button";button.textContent=label;button.disabled=i+delta<0||i+delta>=photos.length;button.setAttribute("aria-label",`${delta<0?"Move earlier":"Move later"}`);button.addEventListener("click",()=>{[photos[i],photos[i+delta]]=[photos[i+delta],photos[i]];draw();});controls.append(button);}row.append(controls);list.append(row);});$("#photo-readout").textContent=`FRAME ORDER: ${photos.map(x=>x.letter).join("")}`;};draw();
+      setActionMode("LOCK PHOTO ORDER ↗"); $("#puzzle-action").onclick=()=>{const chronological=[...photos].sort((a,b)=>a.time.localeCompare(b.time)).map(x=>x.id).join("");const current=photos.map(x=>x.id).join("");if(current!==chronological){feedback("THE CAPTURE TIMES ARE NOT ASCENDING.",true);return;}const word=photos.map(x=>x.letter).join("");if(word!==p.answer){feedback("THE FRAMES ALIGN, BUT THE LETTERS DO NOT.",true);return;}solvePuzzle(word);};
+    } else if(p.type==="cryptex") {
+      box.innerHTML='<p class="artifact-copy">The photo sequence produced a five-letter direction. Rotate each brass ring to enter it. The keyway should face the same side as the first gate.</p><div class="cryptex-stage"><div class="cryptex-model" id="cryptex-model"></div></div><div class="artifact-readout" id="cryptex-readout">AAAAA</div><div class="cryptex-controls" id="cryptex-controls"></div>';
+      const alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ",controls=$("#cryptex-controls"),model=$("#cryptex-model");let letters=[..."KLUVE"].map(c=>alphabet.indexOf(c));
+      function draw(){model.replaceChildren();controls.replaceChildren();letters.forEach((value,i)=>{const ring=document.createElement("div");ring.className="cryptex-ring";ring.style.setProperty("--ring-index",i);ring.innerHTML=`<span class="ring-letter">${alphabet[value]}</span><span class="ring-notch"></span>`;let dragX=null;ring.addEventListener("pointerdown",e=>{dragX=e.clientX;ring.setPointerCapture(e.pointerId);});ring.addEventListener("pointerup",e=>{if(dragX===null)return;const steps=Math.round((e.clientX-dragX)/18);dragX=null;if(steps)change(i,steps);});model.append(ring);const dial=document.createElement("div");dial.className="cryptex-dial";dial.innerHTML=`<button type="button" aria-label="Turn ring ${i+1} backward">−</button><small>${String(i+1).padStart(2,"0")}</small><button type="button" aria-label="Turn ring ${i+1} forward">+</button>`;const buttons=dial.querySelectorAll("button");buttons[0].addEventListener("click",()=>change(i,-1));buttons[1].addEventListener("click",()=>change(i,1));controls.append(dial);});const word=letters.map(x=>alphabet[x]).join("");$("#cryptex-readout").textContent=word;sceneController?.setCryptexLetters(letters.map(x=>alphabet[x]));}
+      function change(i,delta){letters[i]=(letters[i]+delta+26)%26;draw();}
+      draw();setActionMode("ENGAGE CENTER CATCH ↗");$("#puzzle-action").onclick=()=>{const word=letters.map(x=>alphabet[x]).join("");if(word!==p.answer){feedback("THE TUMBLERS HAVE NOT ALIGNED.",true);return;}solvePuzzle(word);};
+    } else if(p.type==="reflection") {
+      box.innerHTML='<p class="artifact-copy">The scratched plate looks blank head-on. Drag around the gate until the side-mounted mirror becomes inspectable. In this record, rotate the plate to match the reflection.</p><div class="mirror-lab"><div class="mirror-frame"><span id="mirror-text">↗ · · ↙</span></div></div><label class="control-label" for="mirror-angle">MIRROR ANGLE <output id="mirror-angle-readout">0°</output></label><input id="mirror-angle" class="range-control" type="range" min="0" max="180" value="0"><div class="artifact-readout" id="mirror-readout">REFLECTION UNRESOLVED</div>';
+      const slider=$("#mirror-angle");slider.addEventListener("input",()=>{const a=Number(slider.value),aligned=a===120;$("#mirror-angle-readout").textContent=`${a}°`;$("#mirror-text").textContent=aligned?"INWARD":"↗ · · ↙";$("#mirror-readout").textContent=aligned?"INSCRIPTION: INWARD":"REFLECTION UNRESOLVED";});setActionMode("RECORD INSCRIPTION ↗");$("#puzzle-action").onclick=()=>Number(slider.value)===120?solvePuzzle(p.answer):feedback("THE MIRROR HAS NOT CAUGHT THE LINE OF SIGHT.",true);
+    } else if(p.type==="morse") {
+      box.innerHTML='<p class="artifact-copy">A lamp repeats a four-letter signal. Short flashes are dots; long flashes are dashes. Separate letters by the longer pauses. No speech is present in this recording.</p><div class="morse-lamp" aria-label="Morse pattern: dot dash dash, dot, dot dot dot, dash"><i class="dot"></i><i class="dash"></i><i class="dash"></i><b>/</b><i class="dot"></i><b>/</b><i class="dot"></i><i class="dot"></i><i class="dot"></i><b>/</b><i class="dash"></i></div><div class="morse-note">SHORT · LONG · LETTER GAP</div>';
+      setAnswerMode("DECODED DIRECTION");
+    } else if(p.type==="channels") {
+      box.innerHTML='<p class="artifact-copy">The scan is a composite. Isolate a color channel and inspect the grain. One channel carries the writing.</p><div class="channel-preview" id="channel-preview"><span id="channel-secret">••••••</span></div><div class="channel-controls"><button type="button" data-channel="red">RED</button><button type="button" data-channel="green">GREEN</button><button type="button" data-channel="blue">BLUE</button></div><div class="artifact-readout" id="channel-readout">COMPOSITE VIEW</div>';
+      box.querySelectorAll("[data-channel]").forEach(button=>button.addEventListener("click",()=>{const ch=button.dataset.channel;box.querySelectorAll("[data-channel]").forEach(b=>b.classList.toggle("selected",b===button));$("#channel-preview").dataset.channel=ch;$("#channel-secret").textContent=ch==="blue"?"RETURN":"••••••";$("#channel-readout").textContent=ch==="blue"?"BLUE CHANNEL / TEXT RECOVERED":"CHANNEL EMPTY";}));setAnswerMode("RECOVERED WORD");
+    } else if(p.type==="earth") {
+      box.innerHTML='<p class="artifact-copy">The survey photograph carries these GPS coordinates:</p><div class="coordinate-card">28.0587031° N<br>82.4138539° W</div><p class="artifact-copy">The location is on USF Tampa. Compare it with the public campus history record. What year was the campus groundbreaking?</p><div class="link-row"><a href="https://earth.google.com/web/search/28.0587031,-82.4138539" target="_blank" rel="noreferrer">OPEN COORDINATE IN GOOGLE EARTH ↗</a><a href="https://www.usf.edu/about-usf/history.aspx" target="_blank" rel="noreferrer">USF HISTORY ↗</a></div><p class="small-note">Online research only. No campus visit is required.</p>';
+      setAnswerMode("YEAR FROM THE RECORD");
+    } else if(p.type==="shadow") {
+      box.innerHTML='<p class="artifact-copy">Rotate the inspection lamp. Align the moving shadow with the engraved line; the aligned relief exposes a four-digit record.</p><div class="shadow-lab"><div class="shadow-mark"></div><div class="shadow-bar" id="shadow-bar"></div></div><label class="control-label" for="shadow-angle">LAMP BEARING <output id="shadow-angle-readout">0°</output></label><input class="range-control" id="shadow-angle" type="range" min="0" max="180" step="15" value="0"><div class="artifact-readout" id="shadow-readout">SHADOW OFF AXIS</div>';
+      const slider=$("#shadow-angle");slider.addEventListener("input",()=>{const a=Number(slider.value),aligned=a===90;$("#shadow-bar").style.transform=`rotate(${a}deg)`;$("#shadow-angle-readout").textContent=`${a}°`;$("#shadow-readout").textContent=aligned?"ETCHING EXPOSED: 1218":"SHADOW OFF AXIS";});setActionMode("TAKE THE READING ↗");$("#puzzle-action").onclick=()=>Number(slider.value)===90?solvePuzzle(p.answer):feedback("THE SHADOW MISSES THE ENGRAVING.",true);
+    } else if(p.type==="route") {
+      box.innerHTML='<p class="artifact-copy">The route begins at A. Use each station once before returning to A. E is the final stop. The log gives the order C before D before B before E; B cannot directly follow A.</p><div class="route-graph"><svg viewBox="0 0 420 180" role="img" aria-label="Five stations A through E with connections"><path d="M60 90 L160 35 L270 55 L360 110 L220 145 L60 90 M160 35 L220 145 M60 90 L270 55 M360 110 L160 35"/><g><circle cx="60" cy="90" r="17"/><text x="60" y="94">A</text><circle cx="160" cy="35" r="17"/><text x="160" y="39">B</text><circle cx="270" cy="55" r="17"/><text x="270" y="59">C</text><circle cx="360" cy="110" r="17"/><text x="360" y="114">D</text><circle cx="220" cy="145" r="17"/><text x="220" y="149">E</text></g></svg></div><div class="route-entry" id="route-entry"></div><div class="artifact-readout" id="route-readout">A → · → · → · → · → A</div>';
+      const entry=$("#route-entry");for(let i=0;i<5;i++){const select=document.createElement("select");select.setAttribute("aria-label",`Route stop ${i+1}`);select.innerHTML='<option value="">—</option>'+"ABCDE".split("").map(c=>`<option>${c}</option>`).join("");select.addEventListener("change",()=>{$("#route-readout").textContent=`A → ${[...entry.querySelectorAll("select")].map(x=>x.value||"·").join(" → ")} → A`;});entry.append(select);}setActionMode("TRACE THE ROUTE ↗");$("#puzzle-action").onclick=()=>{const route=[...entry.querySelectorAll("select")].map(x=>x.value).join("");route===p.answer?solvePuzzle(route):feedback("THE ROUTE BREAKS A SIGHTLINE OR ORDER RULE.",true);};
+    } else if(p.type==="final") {
+      box.innerHTML=`<p class="artifact-copy">Recovered fragments, in gate order:</p><div class="fragment-tray">${progress.fragments.slice(0,9).map((x,i)=>`<span class="fragment-chip found"><small>${String(i+1).padStart(2,"0")}</small>${x}</span>`).join("")}</div><div class="final-sentence">THE GATE IS <span>________</span></div><p class="artifact-copy">The map places the gate outside. The photographs place the camera inside.</p>`;
+      setAnswerMode("FINAL WORD");
+    }
+  }
+  function normalized(value) { return String(value).toUpperCase().replace(/[^A-Z0-9]/g,""); }
+  function feedback(message,error=false) { const el=$("#puzzle-feedback");el.textContent=message;el.classList.toggle("error",error); }
+  function solvePuzzle(value) {
+    const puzzle=puzzles[currentPuzzle]; if(normalized(value)!==normalized(puzzle.answer)){feedback("THE MECHANISM DOES NOT ACCEPT THAT READING.",true);return;}
+    feedback(`RECORD ACCEPTED · FRAGMENT ${puzzle.fragment} RECOVERED`);
+    if(!progress.solved.includes(currentPuzzle))progress.solved.push(currentPuzzle);
+    progress.fragments[currentPuzzle]=puzzle.fragment;
+    if(currentPuzzle===2)progress.inventory.push("cryptex_key");
+    progress.finished=progress.solved.length===10;saveProgress();renderStage();
+    puzzleDialog.classList.add("solving");$("#transition-cover").classList.add("sweep");
+    if(progress.finished)showToast("CONTINUITY RESTORED · PASSAGE OPEN");
+    else showToast(`SEAL ${String(currentPuzzle+1).padStart(2,"0")} RELEASED`);
+    setTimeout(()=>{puzzleDialog.classList.remove("solving");if(puzzleDialog.open)puzzleDialog.close();sceneController?.setCryptexVisible(false);$("#transition-cover").classList.remove("sweep");},850);
+  }
+  function submitAnswer(event) { event.preventDefault();if(currentPuzzle<0)return;solvePuzzle($("#puzzle-answer").value); }
+  function requestHint() {
+    const p=puzzles[currentPuzzle],n=Number(progress.hints[currentPuzzle])||0;if(!p||n>=p.hints.length)return;
+    feedback(`HINT ${n+1}: ${p.hints[n]}`);progress.hints[currentPuzzle]=n+1;saveProgress();
+    $("#hint-button").textContent=n+1>=p.hints.length?"HINTS EXHAUSTED":`REQUEST HINT ${n+2} / ${p.hints.length}`;$("#hint-button").disabled=n+1>=p.hints.length;
+  }
+  function closePuzzle() { if(puzzleDialog.open)puzzleDialog.close();sceneController?.setCryptexVisible(false);puzzleDialog.classList.remove("solving"); }
+
   function openTape() {
-    if(!progress.registerActivated)return;
-    tapeDialog.showModal();loadRuffle();
+    if(!progress.solved.includes(2))return;tapeDialog.showModal();loadRuffle();
   }
   function loadRuffle() {
     if(gamePlayer)return;
-    const init=()=>{
-      try {
-        const ruffle=window.RufflePlayer?.newest();
-        if(!ruffle)throw new Error("Ruffle runtime unavailable");
-        gamePlayer=ruffle.createPlayer();gamePlayer.className="ruffle-game";gamePlayer.setAttribute("aria-label","Recovered Flash game");
-        ruffleContainer.replaceChildren(gamePlayer);
-        gamePlayer.ruffle().load("assets/christmas-cat-17945-lore.swf").then(()=>{$("#player-loading")?.remove();}).catch(()=>showPlayerError());
-      } catch { showPlayerError(); }
-    };
-    if(window.RufflePlayer)init();else {const script=document.querySelector('script[src*="ruffle"]');script?.addEventListener("load",init,{once:true});script?.addEventListener("error",showPlayerError,{once:true});setTimeout(()=>{if(!gamePlayer&& !window.RufflePlayer)showPlayerError();},12000);}
+    const init=()=>{try{const r=window.RufflePlayer?.newest();if(!r)throw new Error("Ruffle unavailable");gamePlayer=r.createPlayer();gamePlayer.className="ruffle-game";gamePlayer.volume=0;ruffleContainer.replaceChildren(gamePlayer);gamePlayer.ruffle().load("assets/christmas-cat-17945-lore.swf").then(()=>$("#player-loading")?.remove()).catch(showPlayerError);}catch{showPlayerError();}};
+    if(window.RufflePlayer)init();else{const script=document.querySelector('script[src*="ruffle"]');script?.addEventListener("load",init,{once:true});script?.addEventListener("error",showPlayerError,{once:true});setTimeout(()=>{if(!gamePlayer&&!window.RufflePlayer)showPlayerError();},12000);}
   }
-  function showPlayerError() {
-    if($("#player-error"))return;
-    const error=document.createElement("div");error.id="player-error";error.className="player-error";error.innerHTML='<span class="eyebrow">PLAYER COULD NOT INITIALIZE</span><p>The recording is available as a direct file. Try another browser or use the local download.</p><a href="assets/christmas-cat-17945-lore.swf" download>DOWNLOAD RECOVERED MEDIA ↗</a>';
-    ruffleContainer.replaceChildren(error);
+  function showPlayerError(){if($("#player-error"))return;const e=document.createElement("div");e.id="player-error";e.className="player-error";e.innerHTML='<span class="eyebrow">PLAYER COULD NOT INITIALIZE</span><p>Try another browser or use the local download.</p><a href="assets/christmas-cat-17945-lore.swf" download>DOWNLOAD RECOVERED MEDIA ↗</a>';ruffleContainer.replaceChildren(e);}
+
+  // A quiet, speech-free procedural score: slow detuned pads and a soft repeating low note.
+  function startMusic() {
+    if(musicContext){if(musicContext.state==="suspended")musicContext.resume().catch(()=>{});return;}
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+    try {
+      musicContext=new AC();musicMaster=musicContext.createGain();musicMaster.gain.value=0;musicMaster.connect(musicContext.destination);
+      const filter=musicContext.createBiquadFilter();filter.type="lowpass";filter.frequency.value=620;filter.Q.value=.5;filter.connect(musicMaster);
+      const notes=[55,82.41,110,164.81];
+      notes.forEach((frequency,i)=>{const osc=musicContext.createOscillator(),gain=musicContext.createGain(),pan=musicContext.createStereoPanner();osc.type=i===0?"sine":"triangle";osc.frequency.value=frequency;osc.detune.value=(i%2?-.9:.7);gain.gain.value=[.16,.065,.042,.018][i];pan.pan.value=(i-1.5)*.35;osc.connect(gain).connect(pan).connect(filter);osc.start();musicNodes.push(osc);});
+      const lfo=musicContext.createOscillator(),lfoGain=musicContext.createGain();lfo.frequency.value=.055;lfoGain.gain.value=140;lfo.connect(lfoGain).connect(filter.frequency);lfo.start();musicNodes.push(lfo);
+      musicMaster.gain.setTargetAtTime(musicOn ? .18 : 0,musicContext.currentTime,1.8);
+    } catch { musicContext=null; }
   }
-  function normalizedAnswer(value){return value.toUpperCase().replace(/[^A-Z0-9]/g,"");}
-  async function answerDigest(value){const data=new TextEncoder().encode(value),digest=await crypto.subtle.digest("SHA-256",data);return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,"0")).join("");}
-  async function solveCurrentPuzzle(event){
-    event.preventDefault();if(currentPuzzle<0||currentPuzzle>=puzzles.length)return;
-    const puzzle=puzzles[currentPuzzle],answer=normalizedAnswer($("#puzzle-answer").value);
-    try{if(await answerDigest(answer)!==puzzle.answerHash){$("#puzzle-feedback").textContent="NO MATCH. THE SEAL REMAINS COLD.";$("#puzzle-feedback").classList.add("error");return;}}catch{$("#puzzle-feedback").textContent="SECURE SUBMISSION REQUIRES HTTPS OR LOCALHOST.";$("#puzzle-feedback").classList.add("error");return;}
-    sealDialog.classList.add("resolving");
-    $("#puzzle-feedback").classList.remove("error");$("#puzzle-feedback").textContent=`RECORD ACCEPTED. FRAGMENT RECOVERED: ${puzzle.fragment}`;
-    if(!progress.solved.includes(currentPuzzle))progress.solved.push(currentPuzzle);
-    progress.fragments[currentPuzzle]=puzzle.fragment;progress.unlocked=Math.max(progress.unlocked,Math.min(10,currentPuzzle+2));
-    if(currentPuzzle===9){progress.finished=true;$("#transmission-card").innerHTML='<div class="transmission-header"><span>INCOMING / GATE 09</span><span class="rec-dot">● OPEN</span></div><p>“The route was looking for its beginning. It found the side we were standing on.”</p><span class="transmission-footer">SOURCE: INSIDE · FINAL ENTRY</span>';}
-    saveProgress();renderSealList();$("#seal-record").textContent=`RECOVERED FRAGMENT: ${puzzle.fragment}`;$("#puzzle-form").hidden=true;$("#hint-button").hidden=true;
-    setTimeout(()=>{sealDialog.classList.remove("resolving");if(sealDialog.open)sealDialog.close();},950);
-  }
-  function requestHint(){
-    const puzzle=puzzles[currentPuzzle],count=Number(progress.hints[currentPuzzle])||0;
-    if(!puzzle||count>=puzzle.hints.length)return;
-    $("#puzzle-feedback").classList.remove("error");$("#puzzle-feedback").textContent=`HINT ${count+1}: ${puzzle.hints[count]}`;
-    progress.hints[currentPuzzle]=count+1;saveProgress();
-    $("#hint-button").textContent=count+1>=puzzle.hints.length?"HINT FILES EXHAUSTED":`REQUEST HINT ${String(count+2).padStart(2,"0")} / 0${puzzle.hints.length}`;
-    $("#hint-button").disabled=count+1>=puzzle.hints.length;
-  }
-  function initializePuzzleWidget(index,body){
-    if(index===1){
-      const slider=body.querySelector("#year-slider"),years=["2008","2016","2024"];
-      slider?.addEventListener("input",()=>{const year=years[Number(slider.value)];body.querySelector("#year-readout").textContent=year;body.querySelector("#shadow-caption").textContent=`FRAME ${year} / TRACE 0${Number(slider.value)+1}`;body.querySelector("#shadow-shape").style.transform=`rotate(${[-34,0,29][Number(slider.value)]}deg)`;body.querySelector(".shadow-ground").dataset.frame=year;});
-    }
-    if(index===2){
-      const yaw=body.querySelector("#yaw-dial"),pitch=body.querySelector("#pitch-dial"),model=body.querySelector("#instrument-model"),out=body.querySelector("#instrument-output");
-      const update=()=>{const y=Number(yaw.value),p=Number(pitch.value);body.querySelector("#yaw-readout").textContent=`${y}°`;body.querySelector("#pitch-readout").textContent=`${p}°`;model.style.transform=`rotateY(${y}deg) rotateX(${p}deg)`;const aligned=Math.abs(y-142)<=2&&Math.abs(p-27)<=2;out.textContent=aligned?"NORTH":"NO SIGHTLINE";out.classList.toggle("revealed",aligned);};yaw?.addEventListener("input",update);pitch?.addEventListener("input",update);
-      let dragging=false,lastX=0,lastY=0;model?.addEventListener("pointerdown",e=>{dragging=true;lastX=e.clientX;lastY=e.clientY;model.setPointerCapture(e.pointerId);});model?.addEventListener("pointermove",e=>{if(!dragging)return;yaw.value=(Number(yaw.value)+Math.round((e.clientX-lastX)*1.4)+360)%360;pitch.value=Math.max(0,Math.min(89,Number(pitch.value)+Math.round((e.clientY-lastY)*.8)));lastX=e.clientX;lastY=e.clientY;update();});model?.addEventListener("pointerup",()=>dragging=false);update();
-    }
-    if(index===3){
-      const wave=body.querySelector("#wave-canvas"),dial=body.querySelector("#phase-dial"),out=body.querySelector("#phase-readout"),decoded=body.querySelector("#decoded-line");
-      const draw=()=>{if(!wave)return;const rect=wave.getBoundingClientRect(),scale=Math.min(window.devicePixelRatio||1,1.5);wave.width=rect.width*scale;wave.height=120*scale;const c=wave.getContext("2d");c.setTransform(scale,0,0,scale,0,0);const w=rect.width,h=120,phase=Number(dial.value)*Math.PI/180;c.clearRect(0,0,w,h);c.strokeStyle="rgba(174,193,201,.13)";c.lineWidth=1;c.beginPath();c.moveTo(0,h/2);c.lineTo(w,h/2);c.stroke();[["#82a9bb",0],["#ad5750",phase]].forEach(([color,offset])=>{c.beginPath();for(let x=0;x<w;x++){const y=h/2+Math.sin(x/w*Math.PI*8+offset)*27;if(x===0)c.moveTo(x,y);else c.lineTo(x,y)}c.strokeStyle=color;c.lineWidth=1.7;c.stroke()});const aligned=Math.abs(Number(dial.value)-180)<=2;decoded.textContent=aligned?"DO NOT ANSWER":"[NO CARRIER LOCK]";decoded.classList.toggle("revealed",aligned);};
-      dial?.addEventListener("input",()=>{out.textContent=`${dial.value}°`;draw();});
-      if(window.ResizeObserver)new ResizeObserver(draw).observe(wave);else window.addEventListener("resize",draw);
-      body.querySelector("#play-tone")?.addEventListener("click",async()=>{try{const AC=window.AudioContext||window.webkitAudioContext,ac=new AC();await ac.resume();for(const [freq,delay] of [[220,0],[330,.22]]){const osc=ac.createOscillator(),gain=ac.createGain();osc.frequency.value=freq;osc.type="sine";gain.gain.setValueAtTime(.0001,ac.currentTime+delay);gain.gain.exponentialRampToValueAtTime(.06,ac.currentTime+delay+.02);gain.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+delay+.45);osc.connect(gain).connect(ac.destination);osc.start(ac.currentTime+delay);osc.stop(ac.currentTime+delay+.48);}setTimeout(()=>ac.close(),1200);}catch{decoded.textContent="AUDIO UNAVAILABLE — USE THE WAVEFORM."}});
-      draw();
-    }
-    if(index===4){
-      const grid=body.querySelector("#campus-grid");if(grid){const letters="ABCDEFGH";for(let row=8;row>=1;row--)for(let col=0;col<8;col++){const cell=document.createElement("button");cell.type="button";cell.className="map-cell";cell.textContent=letters[col]+row;cell.setAttribute("aria-label",`Grid ${letters[col]}${row}`);cell.addEventListener("click",()=>{grid.querySelectorAll(".selected").forEach(n=>n.classList.remove("selected"));cell.classList.add("selected");let output=body.querySelector("#cell-selected");if(!output){output=document.createElement("div");output.id="cell-selected";output.className="query-result";grid.after(output);}output.textContent=`PLOTTED FIX: ${cell.textContent}`;});grid.append(cell);}}
-    }
-    if(index===5){
-      const variants=[
-        ["The first campus buildings are being planned. Ground will be broken in 1958.","PAPER COPY / DATE STAMP: 1958"],
-        ["The first campus buildings were completed in 1960. The initial class arrived that fall.","REVISED COPY / DATE STAMP: 1960"],
-        ["The first buildings had already been planned before the route was logged.","DUPLICATE / DATE STAMP: 1998"]
-      ];
-      body.querySelectorAll(".version-tab").forEach(tab=>tab.addEventListener("click",()=>{body.querySelectorAll(".version-tab").forEach(t=>t.classList.remove("active"));tab.classList.add("active");const v=variants[Number(tab.dataset.version)];body.querySelector("#version-text").textContent=`“${v[0]}”`;body.querySelector("#version-note").textContent=v[1];}));
-    }
-    if(index===6){
-      const rows=[{id:"LANTERN-04",destination:"GATE-09",variance:"+1"},{id:"BELL-12",destination:"GATE-09",variance:"0"},{id:"KEY-03",destination:"HANGAR-2",variance:"+1"},{id:"RIBBON-07",destination:"RETURN",variance:"-1"},{id:"STAR-02",destination:"GATE-09",variance:"-1"}];
-      const draw=()=>{const dest=body.querySelector("#destination-filter").value,varia=body.querySelector("#variance-filter").value;const matches=rows.filter(r=>(dest==="ALL"||r.destination===dest)&&(varia==="ALL"||r.variance===varia));body.querySelector("#inventory-table").innerHTML=`<div class="inventory-head"><span>ITEM ID</span><span>DESTINATION</span><span>VARIANCE</span></div>`+matches.map(r=>`<div class="inventory-row"><span>${r.id}</span><span>${r.destination}</span><span>${r.variance}</span></div>`).join("");body.querySelector("#query-result").textContent=`${matches.length} MATCHING RECORD${matches.length===1?"":"S"}`;};
-      body.querySelectorAll("#destination-filter,#variance-filter").forEach(el=>el.addEventListener("change",draw));draw();
-    }
-    if(index===7){
-      const route=body.querySelector("#route-sequence"),letters="ABCDE";if(route){for(let n=0;n<5;n++){const select=document.createElement("select");select.setAttribute("aria-label",`Route stop ${n+1}`);select.innerHTML='<option value="">—</option>'+[...letters].map(l=>`<option value="${l}">${l}</option>`).join("");route.append(select);}route.addEventListener("change",()=>{const value=[...route.querySelectorAll("select")].map(s=>s.value||"·").join(" → ");body.querySelector(".edge-key").textContent=`CURRENT ROUTE: ${value}  /  CHECK: C < D < B < E.`;});}
-    }
-    if(index===8){
-      const list=body.querySelector("#dispatch-list");if(list){const messages=[{time:"03:30",text:"At dawn, the route returned empty."},{time:"00:30",text:"Inside the frozen frame, a second shadow."},{time:"05:30",text:"Do not answer the last transmission."},{time:"02:30",text:"We were not at the outer gate."},{time:"01:30",text:"No entry was made from outside."},{time:"04:30",text:"Read the east-facing ledger."}];
-        function draw(){list.innerHTML=messages.map((m,i)=>{const hour=Number(m.time.slice(0,2)),received=`${String((hour+23)%24).padStart(2,"0")}:30`;return `<div class="dispatch-card"><span class="dispatch-index">${String(i+1).padStart(2,"0")}</span><span class="dispatch-message">SENT ${m.time} / RECEIVED ${received}<b>${m.text}</b></span><span class="dispatch-controls"><button type="button" data-move="-1" data-index="${i}" aria-label="Move up">↑</button><button type="button" data-move="1" data-index="${i}" aria-label="Move down">↓</button></span></div>`}).join("");list.querySelectorAll("button").forEach(btn=>btn.addEventListener("click",()=>{const i=Number(btn.dataset.index),j=i+Number(btn.dataset.move);if(j<0||j>=messages.length)return;[messages[i],messages[j]]=[messages[j],messages[i]];draw();}));}
-        draw();
-      }
-    }
-    if(index===9){
-      const tray=body.querySelector("#fragment-tray");if(tray){tray.innerHTML=progress.fragments.slice(0,9).map((f,i)=>`<span class="fragment-chip ${f?"found":"missing"}"><small>${String(i+1).padStart(2,"0")}</small>${f||"?"}</span>`).join("");}
-    }
-  }
-  function closeTape(){if(tapeDialog.open)tapeDialog.close();}
-  $("#recover-button").addEventListener("click",openTape);
-  $("#close-tape").addEventListener("click",closeTape);
-  $("#close-seal").addEventListener("click",()=>sealDialog.close());
-  $("#puzzle-form").addEventListener("submit",solveCurrentPuzzle);
+  function setMusic(enabled) { musicOn=Boolean(enabled);localStorage.setItem(MUSIC_KEY,musicOn?"on":"off");$("#music-toggle").textContent=musicOn?"MUSIC ON":"MUSIC OFF";$("#music-toggle").setAttribute("aria-pressed",String(musicOn));if(musicOn)startMusic();if(musicMaster&&musicContext)musicMaster.gain.setTargetAtTime(musicOn ? .18 : 0,musicContext.currentTime,.8); }
+  function primeMusic() { if(musicOn)startMusic(); }
+
+  $("#puzzle-form").addEventListener("submit",submitAnswer);
+  $("#puzzle-action").addEventListener("click",()=>{});
   $("#hint-button").addEventListener("click",requestHint);
-  tapeDialog.addEventListener("click",e=>{if(e.target===tapeDialog)closeTape();});
-  sealDialog.addEventListener("click",e=>{if(e.target===sealDialog)sealDialog.close();});
-  window.addEventListener("resize",setupCanvas);
-  initializePresenceCue();updateClock();setInterval(updateClock,1000);setupCanvas();renderSealList();renderInventory();initializeThreeScene();
+  $("#close-puzzle").addEventListener("click",closePuzzle);
+  puzzleDialog.addEventListener("click",e=>{if(e.target===puzzleDialog)closePuzzle();});
+  puzzleDialog.addEventListener("close",()=>sceneController?.setCryptexVisible(false));
+  $("#music-toggle").addEventListener("click",()=>setMusic(!musicOn));
+  $("#close-tape").addEventListener("click",()=>tapeDialog.close());
+  tapeDialog.addEventListener("click",e=>{if(e.target===tapeDialog)tapeDialog.close();});
+  ["pointerdown","keydown","touchstart"].forEach(type=>window.addEventListener(type,primeMusic,{passive:type!=="keydown"}));
+  window.addEventListener("resize",()=>sceneController?.resize());
+  const musicPreference=localStorage.getItem(MUSIC_KEY);setMusic(musicPreference!=="off");
+  renderStage();initializeScene();
 })();
