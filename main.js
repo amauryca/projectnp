@@ -5,6 +5,8 @@
   const sealDialog = $("#seal-dialog");
   const glitchScreen = $("#glitch-screen");
   const ruffleContainer = $("#ruffle-container");
+  const warningAudio = $("#warning-audio");
+  const escalatingAudio = $("#escalating-audio");
   const SAVE_KEY = "np-gate-09-progress-v1";
   const PLAY_SECONDS = 300;
   const IDLE_CUE_MS = 15000;
@@ -13,8 +15,9 @@
   let voiceEnabled = localStorage.getItem(VOICE_KEY) !== "off";
   let lastActivityAt = Date.now();
   let awaySince = document.hidden ? Date.now() : null;
-  let lastVoiceCueAt = 0;
+  let lastLongCueAt = 0;
   let idleCueTimer = null;
+  let audioContext = null, warningBus = null, escalationBus = null, cueRun = 0;
   const puzzles = window.NP_PUZZLES;
   let progress = readProgress();
   let gamePlayer = null;
@@ -40,27 +43,125 @@
     button.textContent = `VOICE: ${voiceEnabled ? "ON" : "OFF"}`;
     button.setAttribute("aria-pressed", String(voiceEnabled));
   }
-  function speakPlayCue() {
-    if (!voiceEnabled || Date.now() - lastVoiceCueAt < 90000) return;
-    if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
-    const utterance = new SpeechSynthesisUtterance("play the game");
-    utterance.volume = 0.12;
-    utterance.rate = 0.82;
-    utterance.pitch = 0.62;
-    utterance.lang = "en-US";
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-    lastVoiceCueAt = Date.now();
+  function distortionCurve(amount) {
+    const samples = 512, curve = new Float32Array(samples), k = amount * 120;
+    for (let i = 0; i < samples; i++) {
+      const x = i * 2 / (samples - 1) - 1;
+      curve[i] = ((3 + k) * x * 20 * Math.PI / 180) / (Math.PI + k * Math.abs(x));
+    }
+    return curve;
+  }
+  function createAudioGraph() {
+    if (audioContext) return { warningBus, escalationBus };
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass || !warningAudio || !escalatingAudio) return null;
+    try {
+      audioContext = new AudioContextClass();
+      const warningSource = audioContext.createMediaElementSource(warningAudio);
+      const warningGain = audioContext.createGain();
+      warningSource.connect(warningGain).connect(audioContext.destination);
+      warningBus = { gain: warningGain };
+      const escalationSource = audioContext.createMediaElementSource(escalatingAudio);
+      const shaper = audioContext.createWaveShaper();
+      const filter = audioContext.createBiquadFilter();
+      const escalationGain = audioContext.createGain();
+      shaper.oversample = "4x";
+      shaper.curve = distortionCurve(0);
+      filter.type = "lowpass"; filter.frequency.value = 11000;
+      escalationSource.connect(shaper).connect(filter).connect(escalationGain).connect(audioContext.destination);
+      escalationBus = { gain: escalationGain, shaper, filter };
+      return { warningBus, escalationBus };
+    } catch {
+      audioContext = null; warningBus = null; escalationBus = null;
+      return null;
+    }
+  }
+  function primeAudio() {
+    if (!voiceEnabled) return;
+    createAudioGraph();
+    if (audioContext?.state === "suspended") audioContext.resume().catch(() => {});
+  }
+  function stopAudioCues() {
+    cueRun++;
+    [warningAudio, escalatingAudio].forEach(audio => {
+      if (!audio) return;
+      audio.pause(); audio.currentTime = 0; audio.playbackRate = 1;
+    });
+    if (audioContext && warningBus) warningBus.gain.gain.setTargetAtTime(0, audioContext.currentTime, .04);
+    if (audioContext && escalationBus) escalationBus.gain.gain.setTargetAtTime(0, audioContext.currentTime, .04);
+  }
+  function playFirstWarning() {
+    if (!voiceEnabled || !warningAudio) return;
+    stopAudioCues(); primeAudio();
+    warningAudio.currentTime = 0; warningAudio.volume = 0.13;
+    if (audioContext && warningBus) {
+      const now = audioContext.currentTime;
+      warningBus.gain.gain.cancelScheduledValues(now);
+      warningBus.gain.gain.setValueAtTime(.12, now);
+    }
+    warningAudio.play().catch(() => {});
+  }
+  const waitForAudio = (audio, run, ms) => new Promise(resolve => {
+    let done = false;
+    const finish = () => {
+      if (done) return; done = true;
+      clearTimeout(timer); audio.removeEventListener("ended", finish); resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    audio.addEventListener("ended", finish, { once: true });
+    if (run !== cueRun) finish();
+  });
+  async function playEscalatingWarning() {
+    if (!voiceEnabled || !escalatingAudio) return;
+    stopAudioCues(); primeAudio();
+    const run = cueRun;
+    const gainStages = [[.07,.14],[.13,.24],[.22,.39],[.36,.56]];
+    const distortionStages = [[.025,.07],[.09,.17],[.2,.32],[.36,.56]];
+    const duration = Number.isFinite(escalatingAudio.duration) && escalatingAudio.duration > 0 ? escalatingAudio.duration : 3.4;
+    for (let i = 0; i < gainStages.length; i++) {
+      if (run !== cueRun || !voiceEnabled) return;
+      escalatingAudio.currentTime = 0;
+      escalatingAudio.playbackRate = 1 - i * .025;
+      const now = audioContext?.currentTime || 0;
+      const [from, to] = gainStages[i], [soft, harsh] = distortionStages[i];
+      escalatingAudio.volume = to;
+      if (audioContext && escalationBus) {
+        const gain = escalationBus.gain.gain;
+        gain.cancelScheduledValues(now);
+        gain.setValueAtTime(from, now);
+        gain.linearRampToValueAtTime(to, now + duration);
+        escalationBus.shaper.curve = distortionCurve(soft);
+        escalationBus.filter.frequency.cancelScheduledValues(now);
+        escalationBus.filter.frequency.setValueAtTime(10000 - i * 1300, now);
+        escalationBus.filter.frequency.linearRampToValueAtTime(7600 - i * 1250, now + duration);
+        // Increase the distortion once more halfway through each pass.
+        setTimeout(() => { if (run === cueRun && escalationBus) escalationBus.shaper.curve = distortionCurve(harsh); }, duration * 500);
+      }
+      try { await escalatingAudio.play(); } catch { return; }
+      await waitForAudio(escalatingAudio, run, duration * 1000 + 250);
+      escalatingAudio.pause();
+      if (run !== cueRun || !voiceEnabled) return;
+      if (i < gainStages.length - 1) await new Promise(resolve => setTimeout(resolve, 380));
+    }
+    if (run === cueRun) {
+      escalatingAudio.playbackRate = 1;
+      if (audioContext && escalationBus) {
+        escalationBus.gain.gain.setTargetAtTime(0, audioContext.currentTime, .18);
+        escalationBus.shaper.curve = distortionCurve(0);
+        escalationBus.filter.frequency.setTargetAtTime(11000, audioContext.currentTime, .18);
+      }
+    }
   }
   function scheduleIdleCue() {
     clearTimeout(idleCueTimer);
     if (document.hidden) return;
     const remaining = Math.max(0, IDLE_CUE_MS - (Date.now() - lastActivityAt));
     idleCueTimer = setTimeout(() => {
-      if (!document.hidden && Date.now() - lastActivityAt >= IDLE_CUE_MS) speakPlayCue();
+      if (!document.hidden && Date.now() - lastActivityAt >= IDLE_CUE_MS) playFirstWarning();
     }, remaining);
   }
   function noteActivity() {
+    primeAudio();
     lastActivityAt = Date.now();
     if (!document.hidden) scheduleIdleCue();
   }
@@ -71,7 +172,11 @@
   function returnToPage() {
     const awayDuration = awaySince === null ? 0 : Date.now() - awaySince;
     awaySince = null;
-    if (awayDuration >= AWAY_CUE_MS) speakPlayCue();
+    if (awayDuration >= AWAY_CUE_MS && Date.now() - lastLongCueAt >= 90000) {
+      lastLongCueAt = Date.now();
+      playEscalatingWarning();
+    }
+    primeAudio();
     lastActivityAt = Date.now();
     scheduleIdleCue();
   }
@@ -81,7 +186,7 @@
     voiceButton?.addEventListener("click", () => {
       voiceEnabled = !voiceEnabled;
       localStorage.setItem(VOICE_KEY, voiceEnabled ? "on" : "off");
-      if (!voiceEnabled) window.speechSynthesis?.cancel();
+      if (!voiceEnabled) stopAudioCues();
       updateVoiceControl();
       noteActivity();
     });
