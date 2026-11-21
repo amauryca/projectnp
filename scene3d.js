@@ -1,0 +1,332 @@
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
+
+const GATE_SPACING = 11.5;
+const GATE_COUNT = 10;
+
+function makeMetalTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#89969b";
+  ctx.fillRect(0, 0, 256, 256);
+  let seed = 9137;
+  const random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  for (let i = 0; i < 1200; i++) {
+    const x = random() * 256, y = random() * 256;
+    ctx.strokeStyle = `rgba(${random() > .5 ? 255 : 10},${random() > .5 ? 255 : 10},${random() > .5 ? 255 : 10},${random() * .12})`;
+    ctx.lineWidth = random() * 1.3;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + random() * 16, y + random() * 3); ctx.stroke();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(1.2, 1.5);
+  return texture;
+}
+
+function addBox(parent, geometry, material, position, options = {}) {
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(...position);
+  if (options.rotation) mesh.rotation.set(...options.rotation);
+  mesh.castShadow = options.castShadow ?? true;
+  mesh.receiveShadow = options.receiveShadow ?? true;
+  parent.add(mesh);
+  return mesh;
+}
+
+function createNumberTexture(number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 128; canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, 128, 128);
+  ctx.fillStyle = "#dce9e9";
+  ctx.font = "600 50px monospace";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(String(number).padStart(2, "0"), 64, 67);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+export function createGateScene(canvas, onSelect) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.65));
+  renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.08;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a1017);
+  scene.fog = new THREE.FogExp2(0x0a1017, 0.018);
+  const camera = new THREE.PerspectiveCamera(53, canvas.clientWidth / Math.max(canvas.clientHeight, 1), 0.1, 150);
+  camera.position.set(0, 1.78, 4.2);
+
+  const ambient = new THREE.HemisphereLight(0x9baeb6, 0x101317, 1.12);
+  scene.add(ambient);
+  const moon = new THREE.DirectionalLight(0x9bb4c1, 2.1);
+  moon.position.set(-4, 8, 6);
+  moon.castShadow = true;
+  moon.shadow.mapSize.set(1024, 1024);
+  moon.shadow.camera.near = 0.1; moon.shadow.camera.far = 42;
+  moon.shadow.camera.left = -9; moon.shadow.camera.right = 9;
+  moon.shadow.camera.top = 9; moon.shadow.camera.bottom = -7;
+  scene.add(moon);
+
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x202a30, metalness: 0.48, roughness: 0.82, side: THREE.DoubleSide });
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x11191e, metalness: 0.55, roughness: 0.56 });
+  const ribMat = new THREE.MeshStandardMaterial({ color: 0x344149, metalness: 0.72, roughness: 0.48 });
+  const panelMat = new THREE.MeshStandardMaterial({ color: 0x53636a, map: makeMetalTexture(), metalness: 0.78, roughness: 0.62 });
+  const insetMat = new THREE.MeshStandardMaterial({ color: 0x263137, metalness: 0.82, roughness: 0.46 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0x84959a, metalness: 0.82, roughness: 0.35 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x080b0e, metalness: 0.18, roughness: 0.95, side: THREE.DoubleSide });
+
+  // One continuous station hall provides parallax while the camera advances.
+  addBox(scene, new THREE.BoxGeometry(10.5, .34, 126), floorMat, [0, -.18, -56], { castShadow: false });
+  addBox(scene, new THREE.BoxGeometry(.34, 5.25, 126), wallMat, [-5.15, 2.45, -56]);
+  addBox(scene, new THREE.BoxGeometry(.34, 5.25, 126), wallMat, [5.15, 2.45, -56]);
+  addBox(scene, new THREE.BoxGeometry(10.5, .28, 126), wallMat, [0, 5.05, -56]);
+  const seamGeo = new THREE.BoxGeometry(.035, .015, 126);
+  for (const x of [-4.15, -2.05, 0, 2.05, 4.15]) addBox(scene, seamGeo, ribMat, [x, .0, -56], { castShadow: false });
+
+  const ribGeo = new THREE.BoxGeometry(.16, 5.0, .2);
+  const topRibGeo = new THREE.BoxGeometry(10.1, .16, .2);
+  const floorRibGeo = new THREE.BoxGeometry(10.1, .06, .2);
+  const lamps = [];
+  for (let i = 0; i < 31; i++) {
+    const z = 3 - i * 4.0;
+    for (const x of [-4.92, 4.92]) addBox(scene, ribGeo, ribMat, [x, 2.42, z]);
+    addBox(scene, topRibGeo, ribMat, [0, 4.85, z]);
+    addBox(scene, floorRibGeo, ribMat, [0, .02, z]);
+    const lamp = new THREE.PointLight(0x9eb9c3, .55, 8, 2);
+    lamp.position.set(0, 4.58, z - .35); scene.add(lamp); lamps.push(lamp);
+    addBox(scene, new THREE.BoxGeometry(.42, .06, .24), trimMat, [0, 4.85, z - .38], { castShadow: false });
+  }
+
+  const gates = [];
+  const locks = [];
+  const lockBaseMat = new THREE.MeshStandardMaterial({ color: 0x9ab5bc, emissive: 0x1a343c, emissiveIntensity: .55, metalness: .68, roughness: .32 });
+  const lockSolvedMat = new THREE.MeshStandardMaterial({ color: 0xc8e5df, emissive: 0x557e72, emissiveIntensity: 1.05, metalness: .58, roughness: .27 });
+  const lockSealedMat = new THREE.MeshStandardMaterial({ color: 0x8e554d, emissive: 0x621a1a, emissiveIntensity: .75, metalness: .68, roughness: .35 });
+
+  function makeGate(index) {
+    const group = new THREE.Group();
+    group.position.z = -index * GATE_SPACING;
+    scene.add(group);
+    addBox(group, new THREE.BoxGeometry(4.25, 3.8, .55), darkMat, [0, 1.92, -.27], { castShadow: false });
+    const stone = new THREE.MeshStandardMaterial({ color: 0x303b41, map: makeMetalTexture(), metalness: .62, roughness: .7 });
+    const postGeo = new THREE.BoxGeometry(.42, 4.15, .7);
+    addBox(group, postGeo, stone, [-2.18, 2.02, 0]);
+    addBox(group, postGeo, stone, [2.18, 2.02, 0]);
+    addBox(group, new THREE.BoxGeometry(4.75, .48, .72), stone, [0, 4.08, 0]);
+    addBox(group, new THREE.BoxGeometry(4.15, .12, .82), trimMat, [0, 3.81, .03]);
+
+    const leaves = [];
+    for (const side of ["left", "right"]) {
+      const left = side === "left";
+      const pivot = new THREE.Group();
+      pivot.position.set(left ? -2.0 : 2.0, 0, .1);
+      group.add(pivot);
+      const sign = left ? 1 : -1;
+      const centerX = sign * .98;
+      const body = addBox(pivot, new THREE.BoxGeometry(1.96, 3.72, .24), panelMat, [centerX, 1.9, 0]);
+      body.userData.doorBody = true;
+      for (let row = 0; row < 4; row++) {
+        addBox(pivot, new THREE.BoxGeometry(1.52, .56, .095), insetMat, [centerX, .48 + row * .88, .17], { castShadow: false });
+        addBox(pivot, new THREE.BoxGeometry(1.32, .045, .045), trimMat, [centerX, .48 + row * .88, .23], { castShadow: false });
+      }
+      const brace = addBox(pivot, new THREE.BoxGeometry(2.16, .085, .1), trimMat, [centerX, 1.9, .19], { castShadow: false });
+      brace.rotation.z = left ? .74 : -.74;
+      for (let y = .35; y < 3.7; y += .72) {
+        const hinge = new THREE.Mesh(new THREE.CylinderGeometry(.075, .075, .25, 12), trimMat);
+        hinge.position.set(0, y, .12); hinge.castShadow = true; pivot.add(hinge);
+      }
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(.09, 16, 12), trimMat);
+      knob.position.set(-sign * .18, 1.82, .26); pivot.add(knob);
+      leaves.push({ pivot, left });
+    }
+
+    const lock = new THREE.Group();
+    lock.position.set(0, 1.92, .43);
+    group.add(lock);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(.34, .07, 12, 40), lockBaseMat);
+    ring.userData.puzzleIndex = index; ring.castShadow = true; lock.add(ring);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(.19, .19, .13, 24), lockBaseMat);
+    hub.rotation.x = Math.PI / 2; hub.position.z = .025; hub.userData.puzzleIndex = index; lock.add(hub);
+    const numberMat = new THREE.SpriteMaterial({ map: createNumberTexture(index + 1), transparent: true, depthWrite: false });
+    const number = new THREE.Sprite(numberMat);
+    number.scale.set(.43, .43, 1); number.position.z = .13; number.userData.puzzleIndex = index; lock.add(number);
+    const lockLight = new THREE.PointLight(0x9cb7bf, .8, 3.2, 2);
+    lockLight.position.z = .25; lock.add(lockLight);
+    const warning = new THREE.PointLight(0xa8483f, 0, 5.5, 2);
+    warning.position.set(0, 3.8, .65); group.add(warning);
+    gates.push({ group, leaves, lock, lockLight, warning, stone, index });
+    locks.push(lock);
+  }
+  for (let i = 0; i < GATE_COUNT; i++) makeGate(i);
+
+  // Branch-like cables emerge over the later gates, revealing the change gradually.
+  const tendrils = [];
+  const tendrilMat = new THREE.MeshStandardMaterial({ color: 0x342226, emissive: 0x170809, emissiveIntensity: .55, roughness: .82 });
+  for (let i = 2; i < GATE_COUNT; i++) {
+    const z = -i * GATE_SPACING;
+    for (const side of [-1, 1]) {
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * 4.9, .1, z + 1.2),
+        new THREE.Vector3(side * 4.55, 1.0, z + .6),
+        new THREE.Vector3(side * 4.8, 1.9, z + .2),
+        new THREE.Vector3(side * 4.3, 3.1, z - .4),
+        new THREE.Vector3(side * 4.6, 4.5, z - 1.0)
+      ]);
+      const root = new THREE.Mesh(new THREE.TubeGeometry(curve, 16, .055 + i * .004, 6, false), tendrilMat);
+      root.visible = false; root.castShadow = true; scene.add(root); tendrils.push({ mesh: root, stage: i });
+    }
+  }
+
+  // Low-contrast floating ice dust catches the corridor lamps.
+  const dustCount = 420;
+  const dustPositions = new Float32Array(dustCount * 3);
+  for (let i = 0; i < dustCount; i++) {
+    dustPositions[i * 3] = (Math.random() - .5) * 8.5;
+    dustPositions[i * 3 + 1] = .2 + Math.random() * 4.4;
+    dustPositions[i * 3 + 2] = -Math.random() * 100;
+  }
+  const dustGeometry = new THREE.BufferGeometry();
+  dustGeometry.setAttribute("position", new THREE.BufferAttribute(dustPositions, 3));
+  const dust = new THREE.Points(dustGeometry, new THREE.PointsMaterial({ color: 0xa9c0c5, size: .035, transparent: true, opacity: .52, sizeAttenuation: true }));
+  scene.add(dust);
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const clock = new THREE.Clock();
+  let solvedCount = 0, finished = false, yaw = 0, pitch = 0;
+  let dragging = false, downX = 0, downY = 0, lastX = 0, lastY = 0, moved = false;
+  const scratch = new THREE.Vector3();
+  const activeIndex = () => Math.min(Math.max(solvedCount, 0), GATE_COUNT - 1);
+
+  function setSolvedCount(count, isFinished = false) {
+    solvedCount = Math.max(0, Math.min(GATE_COUNT, count));
+    finished = Boolean(isFinished);
+    const creep = Math.min(1, solvedCount / 9);
+    scene.fog.color.setRGB(.039 + creep * .045, .063 - creep * .035, .09 - creep * .046);
+    scene.fog.density = .018 + creep * .008;
+    scene.background.copy(scene.fog.color);
+    ambient.intensity = 1.12 - creep * .28;
+    moon.color.set(0x9bb4c1).lerp(new THREE.Color(0x765257), creep * .68);
+    moon.intensity = 2.1 - creep * .42;
+    lamps.forEach((lamp, i) => {
+      const shadowed = Math.max(0, creep - i / lamps.length * 1.4);
+      lamp.color.set(0x9eb9c3).lerp(new THREE.Color(0xa7443e), shadowed * .82);
+      lamp.intensity = .55 - shadowed * .19;
+    });
+    gates.forEach((gate, i) => {
+      const current = i === activeIndex();
+      gate.lockLight.color.copy(i < solvedCount ? new THREE.Color(0x85c6b1) : new THREE.Color(current ? 0xb5d5da : 0x774542));
+      gate.lockLight.intensity = i < solvedCount ? .7 : current ? 1.15 : .24;
+      gate.warning.userData.baseIntensity = Math.max(0, creep - .18) * (current ? 2.2 : .72);
+      gate.warning.intensity = gate.warning.userData.baseIntensity;
+      gate.stone.color.set(0x303b41).lerp(new THREE.Color(0x382528), creep * .7);
+      if (i < solvedCount) gate.lock.children.forEach(child => { if (child.isMesh && child.geometry.type !== "Sprite") child.material = lockSolvedMat; });
+      else gate.lock.children.forEach(child => { if (child.isMesh && child.geometry.type !== "Sprite") child.material = current ? lockSealedMat : lockBaseMat; });
+    });
+    tendrils.forEach(({ mesh, stage }) => { mesh.visible = solvedCount >= stage; });
+  }
+
+  function resize() {
+    const width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight);
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  }
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(canvas);
+  window.addEventListener("resize", resize);
+
+  function eventPoint(event) {
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  }
+  function onPointerDown(event) {
+    dragging = true; moved = false;
+    downX = lastX = event.clientX; downY = lastY = event.clientY;
+    canvas.setPointerCapture(event.pointerId);
+  }
+  function onPointerMove(event) {
+    if (dragging) {
+      const dx = event.clientX - lastX, dy = event.clientY - lastY;
+      if (Math.hypot(event.clientX - downX, event.clientY - downY) > 5) moved = true;
+      yaw = THREE.MathUtils.clamp(yaw - dx * .0032, -.52, .52);
+      pitch = THREE.MathUtils.clamp(pitch - dy * .0024, -.16, .16);
+      lastX = event.clientX; lastY = event.clientY;
+    } else {
+      eventPoint(event); raycaster.setFromCamera(pointer, camera);
+      const activeLock = locks[activeIndex()];
+      const hit = raycaster.intersectObject(activeLock, true).length > 0;
+      canvas.style.cursor = hit ? "pointer" : "grab";
+    }
+  }
+  function onPointerUp(event) {
+    if (!dragging) return;
+    dragging = false;
+    if (!moved && Math.hypot(event.clientX - downX, event.clientY - downY) <= 5) {
+      eventPoint(event); raycaster.setFromCamera(pointer, camera);
+      const active = activeIndex();
+      const hits = raycaster.intersectObject(locks[active], true);
+      if (hits.length) onSelect(active);
+    }
+  }
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointercancel", () => { dragging = false; });
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const delta = Math.min(.05, clock.getDelta());
+    const targetZ = finished ? 4.2 - (GATE_COUNT - 1) * GATE_SPACING - 7.5 : 4.2 - solvedCount * GATE_SPACING;
+    camera.position.z = THREE.MathUtils.damp(camera.position.z, targetZ, .68, delta);
+    camera.position.y = 1.78 + Math.sin(clock.elapsedTime * .63) * .014;
+    const target = scratch.set(Math.sin(yaw) * 12, 1.83 + pitch * 8, camera.position.z - 12);
+    camera.lookAt(target);
+    const creep = Math.min(1, solvedCount / 9);
+    gates.forEach((gate, i) => {
+      const amount = i < solvedCount ? 1 : 0;
+      const swing = 1.48 * amount;
+      const leftTarget = gate.leaves[0].left ? swing : -swing;
+      const rightTarget = gate.leaves[1].left ? swing : -swing;
+      gate.leaves[0].pivot.rotation.y = THREE.MathUtils.damp(gate.leaves[0].pivot.rotation.y, leftTarget, 2.05, delta);
+      gate.leaves[1].pivot.rotation.y = THREE.MathUtils.damp(gate.leaves[1].pivot.rotation.y, rightTarget, 2.05, delta);
+      gate.lock.rotation.z = Math.sin(clock.elapsedTime * .6 + i) * .025;
+      gate.warning.intensity = gate.warning.userData.baseIntensity * (.94 + Math.sin(clock.elapsedTime * (2.2 + creep * 4) + i) * .06 * creep);
+    });
+    const positions = dustGeometry.attributes.position.array;
+    for (let i = 0; i < dustCount; i++) {
+      const z = i * 3 + 2;
+      if (positions[z] > camera.position.z + 5) positions[z] -= 108;
+      positions[z] += delta * .25;
+    }
+    dustGeometry.attributes.position.needsUpdate = true;
+    renderer.render(scene, camera);
+  }
+  resize();
+  setSolvedCount(0, false);
+  animate();
+
+  return {
+    resize,
+    setSolvedCount,
+    dispose() {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", resize);
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      renderer.dispose();
+    }
+  };
+}
