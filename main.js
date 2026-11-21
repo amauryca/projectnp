@@ -22,8 +22,10 @@
   let timerInterval = null;
   let lastTick = 0;
   let pointer = { down: false, x: 0, y: 0, yaw: -.14, pitch: -.06, targetYaw: -.14, targetPitch: -.06 };
+  const GATE_SPACING = 9.5;
   let width = 0, height = 0, dpr = 1, stars = [], snow = [], gateHitboxes = [];
-  let currentPuzzle = -1, doorOpen = 0;
+  let currentPuzzle = -1, cameraProgress = progress.solved.length * GATE_SPACING, lastFrameTime = 0;
+  const doorOpenLevels = Array.from({ length: 10 }, (_, i) => i < progress.solved.length ? 1 : 0);
 
   function readProgress() {
     try {
@@ -110,7 +112,7 @@
     return [x, y, z];
   }
   function project(v) {
-    const p = rotate(v), camera = 8.4, scale = Math.min(width, height) * 1.2;
+    const p = rotate([v[0], v[1] - 1.45, v[2] + cameraProgress]), camera = 8.4, scale = Math.min(width, height) * 1.2;
     const depth = camera - p[2];
     if (depth < 1) return null;
     return { x: width * .5 + p[0] * scale / depth, y: height * .51 - p[1] * scale / depth, z: p[2], scale: scale / depth };
@@ -149,42 +151,120 @@
       if(id>=0 && out){const box=out.reduce((a,v)=>({minX:Math.min(a.minX,v.x),maxX:Math.max(a.maxX,v.x),minY:Math.min(a.minY,v.y),maxY:Math.max(a.maxY,v.y)}),{minX:Infinity,maxX:-Infinity,minY:Infinity,maxY:-Infinity});gateHitboxes[id]=box;}
     });
   }
+  function transformLeafPoint(x, y, z, hingeX, angle) {
+    const dx = x - hingeX, c = Math.cos(angle), sn = Math.sin(angle);
+    return [hingeX + dx * c, y, z - dx * sn];
+  }
+  function drawDoorLeaf(hingeX, side, y0, y1, z, amount, creep) {
+    const angle = amount * 1.32 * (side === "left" ? 1 : -1);
+    const freeX = side === "left" ? 0 : hingeX;
+    const outerX = side === "left" ? hingeX : 0;
+    const frontZ = z + .14;
+    const face = [
+      transformLeafPoint(outerX, y0, frontZ, hingeX, angle),
+      transformLeafPoint(freeX, y0, frontZ, hingeX, angle),
+      transformLeafPoint(freeX, y1, frontZ, hingeX, angle),
+      transformLeafPoint(outerX, y1, frontZ, hingeX, angle)
+    ];
+    const edge = [
+      transformLeafPoint(outerX, y0, z - .05, hingeX, angle),
+      transformLeafPoint(outerX, y1, z - .05, hingeX, angle),
+      transformLeafPoint(outerX, y1, frontZ, hingeX, angle),
+      transformLeafPoint(outerX, y0, frontZ, hingeX, angle)
+    ];
+    const base = Math.round(38 - creep * 18), red = Math.round(48 + creep * 42);
+    poly(edge, `rgb(${base},${base + 8},${base + 12})`, 1, "rgba(195,215,220,.24)");
+    poly(face, `rgb(${base - 6},${base},${base + 6})`, 1, `rgba(${135 + red},${160 - creep * 55},${170 - creep * 75},.42)`);
+    for (let rail = 0; rail < 3; rail++) {
+      const y = y0 + .32 + rail * .82;
+      const a = transformLeafPoint(outerX + (side === "left" ? .16 : -.16), y, frontZ + .012, hingeX, angle);
+      const b = transformLeafPoint(freeX + (side === "left" ? -.16 : .16), y, frontZ + .012, hingeX, angle);
+      const c = transformLeafPoint(freeX + (side === "left" ? -.16 : .16), y + .035, frontZ + .012, hingeX, angle);
+      const d = transformLeafPoint(outerX + (side === "left" ? .16 : -.16), y + .035, frontZ + .012, hingeX, angle);
+      poly([a,b,c,d], creep > .45 ? "#593b3d" : "#71818a", .78);
+    }
+    const braceA = transformLeafPoint(outerX, y0 + .18, frontZ + .02, hingeX, angle);
+    const braceB = transformLeafPoint(freeX, y1 - .18, frontZ + .02, hingeX, angle);
+    const braceC = transformLeafPoint(freeX, y1 - .22, frontZ + .02, hingeX, angle);
+    const braceD = transformLeafPoint(outerX, y0 + .14, frontZ + .02, hingeX, angle);
+    poly([braceA,braceB,braceC,braceD], creep > .55 ? "#75413e" : "#42515a", .8);
+  }
+  function drawGate(index, z, amount, creep, active) {
+    const iron = creep > .72 ? ["#3a282a","#231c20","#503539","#674448","#17171b"] : ["#39434a","#202a31","#4b555b","#46545b","#1a2026"];
+    // A black throat behind every door makes the next opening feel deep.
+    poly([[-1.78,.2,z-.12],[1.78,.2,z-.12],[1.78,3.18,z-.12],[-1.78,3.18,z-.12]], creep > .5 ? "#09080b" : "#080d12", 1);
+    box(-2.05,1.67,z,.42,3.5,.5,iron);
+    box(2.05,1.67,z,.42,3.5,.5,iron);
+    box(0,3.36,z,4.55,.42,.5,iron);
+    box(-1.78,1.65,z+.05,.14,3.12,.62,["#71828a","#38464c","#8b9ba0","#9ba8ab","#3b464b"]);
+    box(1.78,1.65,z+.05,.14,3.12,.62,["#71828a","#38464c","#8b9ba0","#9ba8ab","#3b464b"]);
+    box(0,3.08,z+.04,3.62,.12,.58,["#64747b","#303c42","#8b999e","#a3afb2","#323c42"]);
+    drawDoorLeaf(-1.68,"left",.12,3.12,z,amount,creep);
+    drawDoorLeaf(1.68,"right",.12,3.12,z,amount,creep);
+    // Hinges, rivets and a changing warning mark make each threshold distinct.
+    for (let side of [-1,1]) {
+      for (let y of [.48,1.28,2.08,2.88]) {
+        box(side*1.68,y,z+.34,.13,.16,.1,creep > .6 ? ["#8b5149","#3b292b","#b05c50","#bd7864","#36272a"] : ["#82949a","#48565c","#aab7ba","#b5c0c2","#414c51"]);
+      }
+    }
+    if (creep > .18) {
+      const spread = .18 + creep * .32;
+      poly([[-1.78,2.95,z+.3],[-1.78-spread,2.2,z+.3],[-1.72,1.7,z+.3],[-1.86-spread,1.05,z+.3],[-1.78,.35,z+.3]], "#572f34", .56);
+      poly([[1.78,2.85,z+.3],[1.78+spread,2.2,z+.3],[1.73,1.55,z+.3],[1.9+spread,.8,z+.3],[1.78,.35,z+.3]], "#572f34", .5);
+    }
+    if (active) {
+      const solved = progress.solved.includes(index), tint = solved ? "#c8dedf" : creep > .65 ? "#b7574d" : "#98b5bd";
+      ring(0,1.65,z+.53,.28,.055,tint,index);
+      const p = project([0,1.65,z+.82]);
+      if (p) {
+        const r = Math.max(13,p.scale*.42);
+        gateHitboxes[index] = { minX:p.x-r, maxX:p.x+r, minY:p.y-r, maxY:p.y+r };
+        ctx.fillStyle = tint; ctx.globalAlpha = .92; ctx.font = `600 ${Math.max(9,Math.min(15,p.scale*7))}px IBM Plex Mono,monospace`; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(String(index+1).padStart(2,"0"),p.x,p.y); ctx.globalAlpha=1;
+      }
+    }
+  }
   function drawScene(now) {
+    const dt = lastFrameTime ? Math.min(.05,(now-lastFrameTime)/1000) : 0;
+    lastFrameTime = now;
+    const completed = Math.min(10,progress.solved.length);
+    const targetProgress = completed >= 10 ? 10 * GATE_SPACING + 6 : completed * GATE_SPACING + 3.1;
+    if (dt) cameraProgress += Math.sign(targetProgress-cameraProgress) * Math.min(Math.abs(targetProgress-cameraProgress),dt*1.05);
+    const creep = Math.min(1,completed/9);
+    const red = Math.round(10+creep*25), ice = Math.round(34-creep*18);
     ctx.clearRect(0,0,width,height);
-    const sky=ctx.createLinearGradient(0,0,0,height);sky.addColorStop(0,"#111a23");sky.addColorStop(.55,"#1a2832");sky.addColorStop(1,"#080c11");ctx.fillStyle=sky;ctx.fillRect(0,0,width,height);
-    stars.forEach(s=>{ctx.globalAlpha=s.a*(.78+Math.sin(now/1800+s.p)*.22);ctx.fillStyle="#d5e6ec";ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fill();});ctx.globalAlpha=1;
-    const aurora=ctx.createLinearGradient(0,height*.18,width,height*.55);aurora.addColorStop(0,"rgba(74,112,115,0)");aurora.addColorStop(.45,"rgba(82,124,125,.1)");aurora.addColorStop(.72,"rgba(73,97,118,.08)");aurora.addColorStop(1,"rgba(74,112,115,0)");ctx.fillStyle=aurora;ctx.fillRect(0,height*.12,width,height*.45);
-    const horizon=height*.73;ctx.fillStyle="#0a1015";ctx.beginPath();ctx.moveTo(0,horizon+8);for(let x=0;x<=width;x+=width/12)ctx.lineTo(x,horizon+Math.sin(x*.012)*9+Math.cos(x*.021)*5);ctx.lineTo(width,height);ctx.lineTo(0,height);ctx.fill();
-    ctx.fillStyle="rgba(176,199,207,.045)";ctx.beginPath();ctx.ellipse(width*.5,height*.83,width*.43,height*.09,0,0,Math.PI*2);ctx.fill();
-    // Snow mound beneath the iron threshold.
-    poly([[-5,-.03,2],[5,-.03,2],[5,-.03,-3],[-5,-.03,-3]],"#bdcbd0",.12);
-    // Massive stone-and-iron posts and lintel.
-    box(-2.35,1.45,0,.48,3.15,.52,["#39434a","#202a31","#4b555b","#46545b","#1a2026"]);
-    box(2.35,1.45,0,.48,3.15,.52,["#39434a","#202a31","#4b555b","#46545b","#1a2026"]);
-    box(0,3.0,0,5.2,.52,.62,["#4b555b","#283239","#48545a","#67747a","#252d33"]);
-    box(0,2.63,.02,3.95,.17,.54,["#171e24","#131a20","#374047","#535e64","#12181e"]);
-    // Gate leaves, braces and frost-edged bars.
-    doorOpen+=( (progress.finished?1:0) - doorOpen )*.025;
-    box(-1.03-doorOpen*1.35,1.32,.18,1.96,2.46,.18,["#202a31","#151d23","#34414a","#56646c","#12191f"]);
-    box(1.03+doorOpen*1.35,1.32,.18,1.96,2.46,.18,["#202a31","#151d23","#34414a","#56646c","#12191f"]);
-    for(let k=0;k<7;k++){
-      const baseX=-1.82+k*.52, x=baseX+(baseX<0?-1:1)*doorOpen*1.35;
-      box(x,1.34,.33,.045,2.28,.045,["#61727b","#39464d","#91a0a5","#a8b4b6","#344047"]);
-      box(x,.96,.38,.1,.13,.1,["#75858b","#465157","#8d9ca2","#b8c4c7","#414d53"]);
+    const sky=ctx.createLinearGradient(0,0,0,height);
+    sky.addColorStop(0,`rgb(${14+red},${22- creep*8},${30- creep*10})`);
+    sky.addColorStop(.5,`rgb(${17+red},${31- creep*11},${39- creep*12})`);
+    sky.addColorStop(1,"#050609");ctx.fillStyle=sky;ctx.fillRect(0,0,width,height);
+    stars.forEach(s=>{ctx.globalAlpha=s.a*(.78+Math.sin(now/1800+s.p)*.22);ctx.fillStyle=creep>.65&&s.p>3?"#bd6b62":"#d5e6ec";ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,Math.PI*2);ctx.fill();});ctx.globalAlpha=1;
+    const aurora=ctx.createLinearGradient(0,height*.18,width,height*.55);aurora.addColorStop(0,"rgba(74,112,115,0)");aurora.addColorStop(.45,`rgba(${82+red},${124-creep*75},${125-creep*70},${.1+creep*.08})`);aurora.addColorStop(.72,"rgba(73,97,118,.08)");aurora.addColorStop(1,"rgba(74,112,115,0)");ctx.fillStyle=aurora;ctx.fillRect(0,height*.12,width,height*.45);
+    const nearZ=6-cameraProgress,farZ=-74-cameraProgress;
+    // The hall floor and walls are projected as perspective planes, so the camera really travels through them.
+    poly([[-3.25,-.08,nearZ],[3.25,-.08,nearZ],[3.25,-.08,farZ],[-3.25,-.08,farZ]],`rgb(${10+ice},${15+ice},${19+ice})`,1,"rgba(159,179,186,.12)");
+    poly([[-3.25,0,nearZ],[-3.25,0,farZ],[-3.25,4.1,farZ],[-3.25,4.1,nearZ]],`rgb(${17+ice},${23+ice},${28+ice})`,1,"rgba(160,181,187,.11)");
+    poly([[3.25,0,nearZ],[3.25,4.1,nearZ],[3.25,4.1,farZ],[3.25,0,farZ]],`rgb(${13+ice},${18+ice},${23+ice})`,1,"rgba(160,181,187,.11)");
+    poly([[-3.25,4.1,nearZ],[3.25,4.1,nearZ],[3.25,4.1,farZ],[-3.25,4.1,farZ]],`rgb(${12+ice},${18+ice},${23+ice})`,.88);
+    // Repeating ribs, floor seams and lamps create a long sense of forward motion.
+    for(let step=0;step<16;step++){
+      const z=6-cameraProgress-step*4.5;
+      box(-3.08,2.05,z,.2,4.1,.2,["#252f35","#171d22","#3e4a50","#4a555b","#151a1f"]);
+      box(3.08,2.05,z,.2,4.1,.2,["#252f35","#171d22","#3e4a50","#4a555b","#151a1f"]);
+      poly([[-3.18,2.1,z+.04],[-3.2,2.1,z-.12],[-3.2,2.7,z-.12],[-3.18,2.7,z+.04]],creep>.5?"#7b403c":"#75919b",.16+creep*.22);
+      if(step%2===0) box(0,3.92,z,6.3,.1,.18,["#344148","#1b242a","#56636a","#657279","#1a2026"]);
     }
-    // The ten rotating seals sit on a custom three-dimensional rail.
+    // Door leaves open with a slow hinge swing as a seal clears; the corridor advances to the next threshold.
     gateHitboxes=[];
-    for(let i=0;i<10;i++){
-      const x=-1.58+(i%5)*.79, y=i<5?2.05:.65;
-      const solved=progress.solved.includes(i),lit=i<progress.unlocked;
-      ring(x,y,.56,.18,.027,solved?"#c7e1e7":lit?"#91aab3":"#596870",i);
-      const p=project([x,y,.78]);
-      if(p){const r=Math.max(8,p.scale*.21);gateHitboxes[i]={minX:p.x-r,maxX:p.x+r,minY:p.y-r,maxY:p.y+r};ctx.fillStyle=solved?"#d8ebef":lit?"#b6cbd1":"#74838a";ctx.globalAlpha=solved ? 0.95 : lit ? 0.7 : 0.4;ctx.font=`${Math.max(7,Math.min(10,p.scale*5))}px IBM Plex Mono,monospace`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(String(i+1).padStart(2,"0"),p.x,p.y);ctx.globalAlpha=1;}
+    for(let i=9;i>=0;i--){
+      const target=i<completed?1:0;
+      doorOpenLevels[i]+=(target-doorOpenLevels[i])*Math.min(1,dt*.72);
+      if(Math.abs(target-doorOpenLevels[i])<.002)doorOpenLevels[i]=target;
+      drawGate(i,-i*GATE_SPACING,doorOpenLevels[i],creep,i===Math.min(9,completed));
     }
-    // A distant red lamp marks the sealed side of the gate.
-    const lamp=project([0,2.82,.8]);if(lamp){const pulse=.5+Math.sin(now/1100)*.16;ctx.fillStyle=`rgba(164,65,59,${pulse})`;ctx.shadowColor="#aa4640";ctx.shadowBlur=11;ctx.beginPath();ctx.arc(lamp.x,lamp.y,3,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
-    snow.forEach(f=>{f.y+=f.v;f.x+=f.drift;if(f.y>height){f.y=-4;f.x=Math.random()*width}if(f.x<0)f.x=width;if(f.x>width)f.x=0;ctx.fillStyle="rgba(213,226,231,.55)";ctx.beginPath();ctx.arc(f.x,f.y,f.r,0,Math.PI*2);ctx.fill();});
-    pointer.yaw+=(pointer.targetYaw-pointer.yaw)*.08;pointer.pitch+=(pointer.targetPitch-pointer.pitch)*.08;
+    // Close red light and small drifting ice flecks intensify with each recovered record.
+    const lamp=project([0,3.55,3.8-cameraProgress]);
+    if(lamp){const pulse=.42+Math.sin(now/(920-creep*300))*(.12+creep*.1);ctx.fillStyle=`rgba(175,${70-creep*34},${65-creep*28},${pulse})`;ctx.shadowColor=creep>.35?"#b23d38":"#aa4640";ctx.shadowBlur=10+creep*20;ctx.beginPath();ctx.arc(lamp.x,lamp.y,2+creep*3,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;}
+    snow.forEach(f=>{f.y+=f.v*(1+creep*.5);f.x+=f.drift;if(f.y>height){f.y=-4;f.x=Math.random()*width}if(f.x<0)f.x=width;if(f.x>width)f.x=0;ctx.fillStyle=creep>.75&&f.r>1.2?"rgba(190,92,82,.46)":"rgba(213,226,231,.48)";ctx.beginPath();ctx.arc(f.x,f.y,f.r,0,Math.PI*2);ctx.fill();});
+    pointer.yaw+=(pointer.targetYaw-pointer.yaw)*.06;pointer.pitch+=(pointer.targetPitch-pointer.pitch)*.06;
     requestAnimationFrame(drawScene);
   }
   function renderSealList() {
