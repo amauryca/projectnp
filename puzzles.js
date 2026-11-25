@@ -30,9 +30,9 @@ window.NP_PUZZLES = [
     answer: "RETURN", type: "channels"
   },
   {
-    name: "Ground Truth", label: "COORDINATE / 07", objective: "Use the photo's GPS location and the public USF timeline to identify the year in the record.", artifact: "SURVEY PHOTOGRAPH", fragment: "E",
-    hints: ["The coordinates point to USF Tampa. Open the location in Google Earth.", "The photo is tied to the first campus construction record.", "USF's official history dates the groundbreaking to 1958."],
-    answer: "1958", type: "earth"
+    name: "UTC Offset", label: "EARTH FIX / 07", objective: "Use Google Earth to verify the camera's location. Then reconstruct the photograph's absolute capture time from its metadata.", artifact: "SURVEY PHOTOGRAPH", fragment: "E",
+    hints: ["The GPS pin is at the USF Tampa campus. The photograph's metadata is in the Exposure Order record.", "DateTimeOriginal is 1998:12:24 22:41:12, recorded in UTC−05:00. Convert that local time to UTC; the date rolls over.", "Enter the UTC instant as YYYYMMDDHHMMSS, with no spaces or punctuation."],
+    answer: "19981225034112", type: "earth"
   },
   {
     name: "The Shadow Index", label: "LAMP ALIGNMENT / 08", objective: "Turn the inspection lamp until the object's shadow crosses the etched line.", artifact: "SHADOW RELIEF", fragment: "I",
