@@ -1,7 +1,7 @@
 window.NP_PUZZLES = [
   {
-    name: "Survey 00", label: "REQUIRED GATE SURVEY", objective: "Find the lamp. Search the first gate for the missing tooth.", artifact: "THE FIRST GATE", fragment: "T",
-    hints: ["A small light was left within reach of the writing table.", "Switch it on, then inspect the old gate from close by.", "The missing brass tooth sits low against the gate. Center it and press E."],
+    name: "Survey 00", label: "REQUIRED ROOM SURVEY", objective: "Find the hand lamp. Its beam may reveal what the dark is keeping.", artifact: "THE FIRST GATE", fragment: "T",
+    hints: ["A small light was left within reach of the writing table.", "Recover the lamp first. Something at the old gate catches its beam.", "The brass key appears only after the lamp is in your inventory. Center it and press E."],
     answer: "SURVEY", type: "survey"
   },
   {

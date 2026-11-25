@@ -2,7 +2,7 @@
   const $ = (selector) => document.querySelector(selector);
   const canvas = $("#gate-scene"), puzzleDialog = $("#puzzle-dialog"), tapeDialog = $("#tape-dialog");
   const ruffleContainer = $("#ruffle-container");
-  const SAVE_KEY = "np-gate-09-progress-v4-room";
+  const SAVE_KEY = "np-gate-09-progress-v5-room-search";
   const puzzles = window.NP_PUZZLES;
   let progress = readProgress(), sceneController = null, currentPuzzle = -1, gamePlayer = null, createCryptexViewer = null, cryptexViewer = null;
   let activePuzzleState = {};
@@ -29,7 +29,7 @@
     const index = currentIndex(), stage = puzzles[index];
     $("#stage-count").textContent = "ROOM 09-A / PRIVATE RESIDENCE";
     $("#stage-title").textContent = progress.finished ? "The House Is Still" : "The North Room";
-    $("#stage-objective").textContent = progress.finished ? "The room settles. The record is complete." : progress.registerActivated ? "Dust has been disturbed somewhere in the room." : "The house is cold. Find a light, then look closely at the old gate.";
+    $("#stage-objective").textContent = progress.finished ? "The room settles. The record is complete." : progress.registerActivated ? "Dust has been disturbed somewhere in the room." : "The room is dark. Find the hand lamp; its beam may expose what comes next.";
     $("#gate-state").textContent = progress.finished ? "RECORD CLOSED" : progress.registerActivated ? "ROOM OCCUPIED" : "POWER LOST";
     const progressBar = $("#stage-progress"); progressBar.replaceChildren();
     for (let i=0;i<10;i++) { const dot=document.createElement("i"); dot.className = i < progress.solved.length ? "complete" : i === index && !progress.finished ? "current" : ""; progressBar.append(dot); }
@@ -39,7 +39,7 @@
   }
   function renderInventory() {
     const hud=$("#inventory-hud"); if(!hud)return; hud.replaceChildren();
-    const items=[{id:"flashlight",label:"LAMP",icon:"◉"},{id:"gate_tooth",label:"TOOTH",icon:"⌁"},{id:"cryptex_key",label:"KEY",icon:"⚿"}];
+    const items=[{id:"flashlight",label:"LAMP",icon:"◉"},{id:"gate_tooth",label:"BRASS KEY",icon:"⚿"},{id:"cryptex_key",label:"KEY",icon:"⌁"}];
     items.forEach(item=>{
       const button=document.createElement("button"); button.type="button"; button.className="inventory-slot"+(hasItem(item.id)?" found":""); button.disabled=!hasItem(item.id);
       button.setAttribute("aria-label",hasItem(item.id)?`Inventory: ${item.label}`:`${item.label} not recovered`); button.title=hasItem(item.id)?item.label:"Not recovered";
@@ -52,16 +52,16 @@
   function onSceneFocusItem(id) {
     const prompt=$("#scene-prompt"); if(!prompt)return;
     if(!id){prompt.classList.remove("visible");return;}
-    const text={flashlight:"HAND LAMP · CLICK TO RECOVER",gate_tooth:"BRASS TOOTH · PRESS E TO TAKE",cryptex_key:"KEY RECOVERED",artifact:"EVIDENCE FOUND · CLICK TO INSPECT"};
+    const text={flashlight:"HAND LAMP · CLICK TO RECOVER",gate_tooth:"BRASS KEY · PRESS E TO TAKE",cryptex_key:"KEY RECOVERED",artifact:"EVIDENCE FOUND · CLICK TO INSPECT"};
     prompt.textContent=text[id]||"EVIDENCE FOUND · CLICK TO INSPECT"; prompt.classList.add("visible");
   }
   function onSceneItemFound(id) {
     if(!["flashlight","gate_tooth","cryptex_key"].includes(id)||hasItem(id))return;
     progress.inventory.push(id);
-    if(id==="flashlight") { sceneController?.setFlashlight(true); saveProgress(); renderInventory(); showToast("HAND LAMP RECOVERED · SWEEP THE GATE"); return; }
+    if(id==="flashlight") { sceneController?.setFlashlight(true); saveProgress(); renderInventory(); showToast("HAND LAMP RECOVERED · A BRASS KEY CATCHES THE LIGHT"); return; }
     if(id==="gate_tooth" && hasItem("flashlight")) {
       progress.registerActivated=true; progress.solved=[0]; progress.fragments[0]=puzzles[0].fragment; saveProgress(); renderStage();
-      showToast("SURVEY COMPLETE · THE FIRST SEAL RELEASES"); return;
+      showToast("BRASS KEY RECOVERED · THE FIRST SEAL RELEASES"); return;
     }
     saveProgress(); renderInventory(); showToast("OBJECT RECOVERED");
   }
@@ -72,7 +72,7 @@
   }
   async function initializeScene() {
     try {
-      const sceneModule=await import("./scene3d.room.js?v=3");
+      const sceneModule=await import("./scene3d.room.js?v=4");
       const {createGateScene}=sceneModule; createCryptexViewer=sceneModule.createCryptexViewer;
       sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem);
       sceneController.setRegisterActive(progress.registerActivated);
