@@ -78,7 +78,7 @@ export function createGateScene(canvas,onSelect=()=>{},onItemFound=()=>{},onFocu
   const covered=(x,z,w,d,h,seed)=>{box(w,.14,d,wood,x,.86,z);for(const sx of [-1,1])for(const sz of [-1,1])box(.12,.82,.12,wood,x+sx*(w/2-.12),.43,z+sz*(d/2-.12));const top=new THREE.Mesh(fabricGeometry(w+.4,d+.4,seed),fabric);top.rotation.x=-Math.PI/2;top.position.set(x,.96,z);top.castShadow=true;top.receiveShadow=true;room.add(top);const clothCenterY=h/2+.015;for(const s of [-1,1]){const side=new THREE.Mesh(fabricGeometry(d+.3,h,seed+s),fabric);side.rotation.y=Math.PI/2;side.position.set(x+s*w*.49,clothCenterY,z);side.castShadow=true;side.receiveShadow=true;room.add(side);}for(const s of [-1,1]){const panel=new THREE.Mesh(fabricGeometry(w+.12,h,seed+2+s),fabric);panel.position.set(x,clothCenterY,z+s*d*.49);panel.castShadow=true;panel.receiveShadow=true;room.add(panel);}return top;};
   covered(-5,-1.5,2.5,2,1.45,2);covered(4.9,-2.1,2.8,2.1,1.65,4);covered(-4,4,2.2,1.7,1.15,7);
   // Desk and drawers, cabinet, wall mirror and window.
-  box(2.5,.18,1.05,wood,-5,1.2,-4.6);box(2.2,.12,.9,trim,-5,1.36,-4.6);for(const x of [-6,-4])box(.16,1.2,.16,wood,x,.62,-4.6);
+  box(2.5,.18,1.05,wood,-5,.8,-4.6);box(2.2,.12,.9,trim,-5,.96,-4.6);for(const x of [-6,-4])box(.16,.84,.16,wood,x,.42,-4.6);
   // A chair is pulled back from the writing desk, leaving a believable seat gap.
   box(.62,.12,.58,wood,-5,.68,-3.55);for(const x of [-5.25,-4.75])for(const z of [-3.78,-3.32])box(.07,.65,.07,wood,x,.34,z);box(.62,.78,.12,wood,-5,1.08,-3.27);box(.56,.08,.07,trim,-5,1.43,-3.19);
   box(1.6,2.5,.75,wood,6,1.25,-4.9);box(1.65,.12,.8,trim,6,2.52,-4.9);for(let y of [.7,1.35,2]){box(1.35,.04,.05,trim,6,y,-4.48);box(.08,.08,.07,trim,6,y,-4.4);}
@@ -107,9 +107,9 @@ export function createGateScene(canvas,onSelect=()=>{},onItemFound=()=>{},onFocu
     if(id==="flashlight"){const lens=new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,.06,16),trim);lens.rotation.z=Math.PI/2;lens.position.x=.21;g.add(lens);const glow=new THREE.Mesh(new THREE.CircleGeometry(.06,16),new THREE.MeshBasicMaterial({color:0xffc875}));glow.position.x=.245;glow.rotation.y=Math.PI/2;g.add(glow);const beacon=new THREE.PointLight(0xffbd69,1.8,2.7,2);beacon.position.set(.08,.08,0);g.add(beacon);}
     if(numeric&&id!==3){const label=new THREE.Mesh(new THREE.PlaneGeometry(.18,.09),new THREE.MeshBasicMaterial({map:textTexture(mark,"#d9bd8b"),transparent:true,side:THREE.DoubleSide}));label.position.y=.045;label.rotation.x=-.35;g.add(label);}
     g.userData={id,hidden,under};room.add(g);items.push(g);return g;};
-  addItem("flashlight",-5.75,1.495,-4.6,{rot:-.65});addItem("chair",-5,.72,-3.55);const brassKey=addItem("gate_tooth",-.3,.13,-6.15,{hidden:true});brassKey.visible=false;
+  addItem("flashlight",-5.75,1.095,-4.6,{rot:-.65});addItem("chair",-5,.72,-3.55);const brassKey=addItem("gate_tooth",-.3,.13,-6.15,{hidden:true});brassKey.visible=false;
   // Evidence appears across the room in sequence. Several are tucked below furniture.
-  const spots=[[-5.1,.16,-4.1,{under:true}],[.8,.13,-3.3,{under:true}],[5.05,.13,-2.15,{under:true}],[-4.55,1.48,-4.45,{}],[-6.1,.12,-1.4,{under:true}],[-2.7,.2,4.3,{}],[5.7,.16,5.7,{under:true}],[3.9,.16,-2.4,{under:true}],[-5.4,.15,4.1,{}]];
+  const spots=[[-5.1,.16,-4.1,{under:true}],[.8,.13,-3.3,{under:true}],[5.05,.13,-2.15,{under:true}],[-4.55,1.08,-4.45,{}],[-6.1,.12,-1.4,{under:true}],[-2.7,.2,4.3,{}],[5.7,.16,5.7,{under:true}],[3.9,.16,-2.4,{under:true}],[-5.4,.15,4.1,{}]];
   spots.forEach((s,i)=>addItem(i,...s.slice(0,3),s[3]));
   const door=new THREE.Group();door.position.set(-1.2,0,-6.67);room.add(door);const leaf=new THREE.Mesh(new THREE.BoxGeometry(2.38,3.78,.18),wood);leaf.position.set(1.19,1.89,0);leaf.castShadow=true;leaf.receiveShadow=true;door.add(leaf);
   for(const [cx,cy,w,h] of [[1.19,2.75,1.62,1.05],[1.19,1.1,1.62,1.1]]){const inset=new THREE.Mesh(new THREE.BoxGeometry(w,h,.035),gold);inset.position.set(cx,cy,.105);door.add(inset);const panel=new THREE.Mesh(new THREE.BoxGeometry(w-.12,h-.12,.04),wood);panel.position.set(cx,cy,.13);door.add(panel);}
@@ -139,7 +139,7 @@ export function createGateScene(canvas,onSelect=()=>{},onItemFound=()=>{},onFocu
   const setFocus=it=>{if(focused!==it){focused=it;onFocus(it?it.userData.id:null);}};
   const crouchButton=document.getElementById("crouch-toggle"),setCrouchButton=v=>{if(crouchButton){crouchButton.setAttribute("aria-pressed",String(v));crouchButton.textContent=v?"STAND":"CROUCH";}};
   function toggleSeat(){
-    if(!seated){standingPose={position:camera.position.clone(),yaw,pitch};seatFrom.copy(camera.position);seatTo.set(-5,1.42,-3.72);seatTarget=1;seatYawTarget=0;seatPitchTarget=-.18;seated=true;crouched=false;setCrouchButton(true);onSeatChange(true);}
+    if(!seated){standingPose={position:camera.position.clone(),yaw,pitch};seatFrom.copy(camera.position);seatTo.set(-5,1.42,-3.55);seatTarget=1;seatYawTarget=0;seatPitchTarget=-.18;seated=true;crouched=false;setCrouchButton(true);onSeatChange(true);}
     else{seatFrom.copy(camera.position);seatTo.copy(standingPose?.position||camera.position);seatTarget=0;seatYawTarget=standingPose?.yaw??yaw;seatPitchTarget=standingPose?.pitch??pitch;seated=false;morseActive=false;onSeatChange(false);setCrouchButton(false);}
   }
   const heardEvidence=new Set();function inspect(){if(!focused)return;const id=focused.userData.id;if(id==="chair"){toggleSeat();return;}if(id==="flashlight"||id==="gate_tooth"){if(found.has(id))return;pickupPulse(focused);playPickup(id==="flashlight"?"lamp":"metal");found.add(id);focused.visible=false;if(id==="flashlight"&&!found.has("gate_tooth"))brassKey.visible=true;onItemFound(id);return;}if(typeof id==="number"&&register&&id===solved-1&&id<9){if(!heardEvidence.has(id)){heardEvidence.add(id);pickupPulse(focused);playPickup("paper");}onSelect(id+1);}}
