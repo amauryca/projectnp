@@ -25,6 +25,13 @@ html,body.immersive,.immersive .world{background:#160b0b}
 .count-record{margin:12px 0;padding:10px 12px;border:1px solid rgba(196,149,92,.25);background:rgba(18,10,9,.72)}
 .count-record>div{display:grid;grid-template-columns:28px 1fr 18px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(196,149,92,.12);font:9px var(--mono);color:#dbc6a7}
 .count-record>div:last-child{border-bottom:0}.count-record span{color:#a87951}.count-record i{font-style:normal;text-align:center;color:#a87951}
+.cryptex-viewer{touch-action:none;cursor:grab;box-shadow:inset 0 0 28px rgba(0,0,0,.38),0 10px 28px rgba(0,0,0,.22)}
+.cryptex-viewer:active{cursor:grabbing}.cryptex-viewer:focus-visible{outline:2px solid #cfad70;outline-offset:2px}
+.cryptex-readout{padding:8px 0;color:#f2d59a;text-shadow:0 0 16px rgba(207,160,77,.22)}
+.cryptex-dial button{min-width:32px;min-height:32px;border-color:rgba(222,177,105,.46);background:linear-gradient(145deg,#25422e,#12231a);color:#f0d19b;transition:transform .16s ease,background .16s ease,border-color .16s ease}
+.cryptex-dial button:hover{transform:translateY(-1px);background:linear-gradient(145deg,#315638,#1a3324);border-color:#d8b16d}
+.cryptex-dial button:active{transform:translateY(1px) scale(.96)}
+.cryptex-dial button:focus-visible{outline:2px solid #e6c578;outline-offset:2px}
 @media(max-width:700px){.stage-hud{left:18px;bottom:150px;max-width:74vw}.world-footer{min-height:49px}.world-footer #control-hint{font-size:6px;max-width:45vw;line-height:1.5}.move-pad{bottom:85px}.crouch-toggle{bottom:48px}.inventory-hud{gap:3px}}
 @media(max-height:520px){.stage-hud{bottom:74px}.move-pad{bottom:66px;transform:scale(.8);transform-origin:bottom left}.crouch-toggle{bottom:28px}.world-footer{min-height:40px}}
 
