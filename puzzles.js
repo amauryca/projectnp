@@ -15,9 +15,9 @@ window.NP_PUZZLES = [
     answer: "31210", type: "cryptex"
   },
   {
-    name: "The Blind Side", label: "REFLECTIVE SURFACE / 04", objective: "Find the viewing angle at which the mirror inscription becomes readable.", artifact: "MIRROR PLATE", fragment: "G",
-    hints: ["The plate does not show the inscription when viewed head-on.", "Drag to inspect the gate from its side, then click the mirror plate.", "In the inspection view, rotate the mirror until the letters align. Read the word."],
-    answer: "INWARD", type: "reflection"
+    name: "The Blind Side", label: "EARTH IMAGE / 04", objective: "Compare the mirror's reflected campus view with the recovered Google Earth captures. Find the frame that matches the reflected landmarks, then read its camera bearing.", artifact: "MIRROR PLATE", fragment: "G",
+    hints: ["The reflection shows a straight north-south road beside a long, narrow lake.", "Match the lake and road arrangement in the Google Earth reference. The correct capture has the same view direction as the mirror.", "Choose the frame with Lake Behnke west of the north-south road; read the bearing in its metadata."],
+    answer: "000", type: "earth-mirror"
   },
   {
     name: "Signal 05", label: "LIGHT TRANSMISSION / 05", objective: "Decode the lamp's short and long flashes. This is the only Morse puzzle.", artifact: "SIGNAL LAMP", fragment: "A",
@@ -25,9 +25,9 @@ window.NP_PUZZLES = [
     answer: "WEST", type: "morse"
   },
   {
-    name: "Image Residue", label: "CHANNEL ANALYSIS / 06", objective: "Inspect the recovered photograph's color channels for the hidden word.", artifact: "GLASS NEGATIVE", fragment: "T",
-    hints: ["The visible photograph is a composite of three channels.", "Inspect each channel separately; the blue channel contains the writing.", "Reveal the word in BLUE and submit it."],
-    answer: "RETURN", type: "channels"
+    name: "Negative Archive", label: "IMAGE METADATA / 06", objective: "Inspect the six recovered photographs. Put them in capture-time order, then read the final character of each camera note.", artifact: "PHOTO NEGATIVES", fragment: "T",
+    hints: ["Open each metadata card. DateTimeOriginal is the reliable field for ordering the photographs.", "The camera notes contain decoys and one useful last character each. Read those characters from earliest to latest.", "The recovered word tells the operator what to do."],
+    answer: "RETURN", type: "metadata-photos"
   },
   {
     name: "UTC Offset", label: "EARTH FIX / 07", objective: "Use Google Earth to verify the camera's location. Then reconstruct the photograph's absolute capture time from its metadata.", artifact: "SURVEY PHOTOGRAPH", fragment: "E",
@@ -50,3 +50,4 @@ window.NP_PUZZLES = [
     answer: "INSIDE", type: "final"
   }
 ];
+
