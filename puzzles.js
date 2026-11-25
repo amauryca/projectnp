@@ -10,9 +10,9 @@ window.NP_PUZZLES = [
     answer: "EARTH", type: "photo-order"
   },
   {
-    name: "The Cryptex", label: "GOOGLE EARTH / PLACE DATA / 03", objective: "Find the USF Tampa place card in Google Earth. Use the five-digit postal code in its address to open the cryptex.", artifact: "BRASS CRYPTEX", fragment: "E",
-    hints: ["Search Google Earth for University of South Florida, Tampa.", "Open the campus place card and inspect its published address.", "The five-digit ZIP code is the ring code."],
-    answer: "33620", type: "cryptex"
+    name: "The Cryptex", label: "CAMPUS SURVEY / 03", objective: "Find the bull fountain at the Marshall Student Center in Google Earth. Count the details in the survey record's order and enter one count per ring.", artifact: "BRASS CRYPTEX", fragment: "E",
+    hints: ["Use the Marshall Student Center plaza's bull fountain, not a different USF bull.", "The five counts are: bulls; red-shirted people beside a bull; yellow signs beside a bull; people in business attire; yellow daffodils.", "Enter each count in that order. The final category may contribute a zero."],
+    answer: "31210", type: "cryptex"
   },
   {
     name: "The Blind Side", label: "REFLECTIVE SURFACE / 04", objective: "Find the viewing angle at which the mirror inscription becomes readable.", artifact: "MIRROR PLATE", fragment: "G",

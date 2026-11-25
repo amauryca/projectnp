@@ -22,5 +22,8 @@ html,body.immersive,.immersive .world{background:#160b0b}
 .puzzle-dialog,.tape-dialog{background:rgba(15,7,7,.94);border-color:rgba(189,135,82,.35);color:#eadac2}.puzzle-card{background:linear-gradient(145deg,#211211,#100a09);border-color:rgba(188,139,88,.3)}
 .puzzle-header h2{font-family:Georgia,serif;font-weight:400}.artifact-readout,.coordinate-card{border-color:rgba(196,149,92,.32);background:#1b1110;color:#e9d4ad}
 .cryptex-viewer{background:radial-gradient(ellipse at center,rgba(150,74,34,.3),rgba(17,9,8,.3));border-color:rgba(218,171,98,.25)}
+.count-record{margin:12px 0;padding:10px 12px;border:1px solid rgba(196,149,92,.25);background:rgba(18,10,9,.72)}
+.count-record>div{display:grid;grid-template-columns:28px 1fr 18px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(196,149,92,.12);font:9px var(--mono);color:#dbc6a7}
+.count-record>div:last-child{border-bottom:0}.count-record span{color:#a87951}.count-record i{font-style:normal;text-align:center;color:#a87951}
 @media(max-width:700px){.stage-hud{left:18px;bottom:150px;max-width:74vw}.world-footer{min-height:49px}.world-footer #control-hint{font-size:6px;max-width:45vw;line-height:1.5}.move-pad{bottom:85px}.crouch-toggle{bottom:48px}.inventory-hud{gap:3px}}
 @media(max-height:520px){.stage-hud{bottom:74px}.move-pad{bottom:66px;transform:scale(.8);transform-origin:bottom left}.crouch-toggle{bottom:28px}.world-footer{min-height:40px}}
