@@ -123,18 +123,21 @@ export function createGateScene(canvas,onSelect=()=>{},onItemFound=()=>{},onFocu
   function pickupPulse(object){const pos=new THREE.Vector3();object.getWorldPosition(pos);const mat=new THREE.MeshBasicMaterial({color:0xf1c579,transparent:true,opacity:.72,depthWrite:false}),mesh=new THREE.Mesh(new THREE.TorusGeometry(.1,.018,6,28),mat);mesh.position.copy(pos);mesh.rotation.x=Math.PI/2;scene.add(mesh);pickupEffects.push({mesh,age:0});}
   const flashlight=new THREE.SpotLight(0xffe3ad,0,21,Math.PI/6,.52,1.35);camera.add(flashlight);flashlight.position.set(0,0,0);flashlight.target.position.set(0,0,-1);camera.add(flashlight.target);
   const flashlightBeam=new THREE.Mesh(new THREE.ConeGeometry(2.8,8,28,1,true),new THREE.MeshBasicMaterial({color:0xffe0aa,transparent:true,opacity:.075,depthWrite:false,side:THREE.DoubleSide}));flashlightBeam.rotation.x=Math.PI/2;flashlightBeam.position.z=-4;flashlightBeam.visible=false;camera.add(flashlightBeam);
+  const CROUCH_CLEARANCE=.73;
   const colliders=[
-    {x:-5,z:-1.5,w:1.7,d:1.2,height:1.45,crawl:true},
-    {x:4.9,z:-2.1,w:1.8,d:1.3,height:1.65,crawl:true},
-    {x:-4,z:4,w:1.5,d:1.1,height:1.15,crawl:true},
-    // The bed body has enough crawl clearance; the taller headboard remains solid.
-    {x:0,z:-3.3,w:2.15,d:1.34,height:.75,crawl:true},
-    {x:0,z:-4.85,w:2.3,d:.12,height:3.5,crawl:false},
-    {x:-5,z:-4.6,w:1.6,d:.65,height:1.3,crawl:true},
-    {x:-5,z:-3.5,w:.55,d:.42,height:.8,crawl:false},
-    {x:6,z:-4.9,w:1.1,d:.55,height:2.5,crawl:false},
-    {x:-2.62,z:-3.3,w:.5,d:.5,height:.95,crawl:true},
-    {x:2.62,z:-3.3,w:.5,d:.5,height:.95,crawl:true}
+    // Covered tables: the underside at .79 leaves room for the crouched camera.
+    {x:-5,z:-1.5,w:1.35,d:1.1,clearance:.79,crawl:true},
+    {x:4.9,z:-2.1,w:1.5,d:1.15,clearance:.79,crawl:true},
+    {x:-4,z:4,w:1.2,d:.95,clearance:.79,crawl:true},
+    // The bed base leaves a low crawl gap; its headboard stays solid.
+    {x:0,z:-3.3,w:2.15,d:1.38,clearance:.75,crawl:true},
+    {x:0,z:-4.85,w:2.3,d:.16,crawl:false},
+    // The desk underside is too low to crawl under, so block it at every stance.
+    {x:-5,z:-4.6,w:1.35,d:.6,crawl:false},
+    {x:-5,z:-3.5,w:.45,d:.42,crawl:false},
+    {x:6,z:-4.9,w:.9,d:.45,crawl:false},
+    {x:-2.62,z:-3.3,w:.48,d:.45,crawl:false},
+    {x:2.62,z:-3.3,w:.48,d:.45,crawl:false}
   ];
   const setFocus=it=>{if(focused!==it){focused=it;onFocus(it?it.userData.id:null);}};
   const crouchButton=document.getElementById("crouch-toggle"),setCrouchButton=v=>{if(crouchButton){crouchButton.setAttribute("aria-pressed",String(v));crouchButton.textContent=v?"STAND":"CROUCH";}};
@@ -146,13 +149,24 @@ export function createGateScene(canvas,onSelect=()=>{},onItemFound=()=>{},onFocu
   const targetPos=new THREE.Vector3();
   function refreshEvidence(){items.forEach(item=>{if(typeof item.userData.id==="number")item.visible=register&&item.userData.id===solved-1;});}
   function overlapsCollider(px,pz,c){return Math.abs(px-c.x)<c.w&&Math.abs(pz-c.z)<c.d;}
-  function blocked(px,pz,low=crouched){return colliders.some(c=>overlapsCollider(px,pz,c)&&!(low&&c.crawl&&.66<c.height));}
+  function blocked(px,pz,low=crouched,fromX=px,fromZ=pz){
+    return colliders.some(c=>{
+      if(!overlapsCollider(px,pz,c))return false;
+      if(low&&c.crawl&&c.clearance>=CROUCH_CLEARANCE)return false;
+      // If a collision already exists, permit movement that increases distance from it.
+      if(overlapsCollider(fromX,fromZ,c)){
+        const before=(fromX-c.x)**2+(fromZ-c.z)**2,after=(px-c.x)**2+(pz-c.z)**2;
+        if(after>before+1e-6)return false;
+      }
+      return true;
+    });
+  }
   function setCrouch(value){if(!value&&blocked(camera.position.x,camera.position.z,false)){setCrouchButton(true);return false;}crouched=Boolean(value);setCrouchButton(crouched);return crouched;}
   function unlockByGesture(){unlockAudio();}
   window.addEventListener("pointerdown",unlockByGesture,{passive:true});window.addEventListener("keydown",unlockByGesture);
   let lastFrame=0;function loop(now=0){requestAnimationFrame(loop);if(document.hidden||paused){clock.getDelta();return;}if(lowEnd&&now-lastFrame<24){clock.getDelta();return;}const dt=Math.min(clock.getDelta(),.04);lastFrame=now;
     let forward=(keys.has("KeyW")||keys.has("ArrowUp")||move.forward?1:0)-(keys.has("KeyS")||keys.has("ArrowDown")||move.back?1:0),strafe=(keys.has("KeyD")||keys.has("ArrowRight")||move.right?1:0)-(keys.has("KeyA")||keys.has("ArrowLeft")||move.left?1:0);if(seated){forward=0;strafe=0;}let length=Math.hypot(forward,strafe);if(length){forward/=length;strafe/=length;}const desiredSpeed=crouched?1.45:3.15,targetX=(-Math.sin(yaw)*forward+Math.cos(yaw)*strafe)*desiredSpeed,targetZ=(-Math.cos(yaw)*forward-Math.sin(yaw)*strafe)*desiredSpeed;
-    velocityX=THREE.MathUtils.damp(velocityX,targetX,length?12:9,dt);velocityZ=THREE.MathUtils.damp(velocityZ,targetZ,length?12:9,dt);const oldX=camera.position.x,oldZ=camera.position.z,nextX=clamp(oldX+velocityX*dt,-7.35,7.35),nextZ=clamp(oldZ+velocityZ*dt,-6.35,6.35);if(!blocked(nextX,oldZ))camera.position.x=nextX;else velocityX=0;if(!blocked(camera.position.x,nextZ))camera.position.z=nextZ;else velocityZ=0;
+    velocityX=THREE.MathUtils.damp(velocityX,targetX,length?12:9,dt);velocityZ=THREE.MathUtils.damp(velocityZ,targetZ,length?12:9,dt);const oldX=camera.position.x,oldZ=camera.position.z,nextX=clamp(oldX+velocityX*dt,-7.35,7.35),nextZ=clamp(oldZ+velocityZ*dt,-6.35,6.35);if(!blocked(nextX,oldZ,crouched,oldX,oldZ))camera.position.x=nextX;else velocityX=0;const beforeZMoveX=camera.position.x;if(!blocked(beforeZMoveX,nextZ,crouched,beforeZMoveX,oldZ))camera.position.z=nextZ;else velocityZ=0;
     const traveled=Math.hypot(camera.position.x-oldX,camera.position.z-oldZ);if(traveled>.001){stepDistance+=traveled;bobPhase+=dt*(crouched?8:11);const stepLength=crouched ? .9 : 1.18;while(stepDistance>=stepLength){stepDistance-=stepLength;const onRug=Math.abs(camera.position.x)<4&&Math.abs(camera.position.z+.6)<3;playFootstep(crouched||onRug);}}else stepDistance=Math.min(stepDistance,.12);
     const bob=traveled>.001?Math.sin(bobPhase)*.018:0;camera.position.y=THREE.MathUtils.damp(camera.position.y,crouched ? .66 : 1.62,9,dt)+bob;seatProgress=THREE.MathUtils.damp(seatProgress,seatTarget,8,dt);if(seated||seatProgress>.002){camera.position.lerpVectors(seatFrom,seatTo,seatProgress);if(Math.abs(seatProgress-seatTarget)>.025){const angleDelta=Math.atan2(Math.sin(seatYawTarget-yaw),Math.cos(seatYawTarget-yaw));yaw+=angleDelta*(1-Math.exp(-8*dt));pitch=THREE.MathUtils.damp(pitch,seatPitchTarget,8,dt);}}camera.rotation.order="YXZ";camera.rotation.y=yaw;camera.rotation.x=pitch;door.rotation.y=THREE.MathUtils.damp(door.rotation.y,finished?-.82:0,2.4,dt);if(finished&&Math.abs(door.rotation.y+.82)>.02)renderer.shadowMap.needsUpdate=true;flashlight.intensity=THREE.MathUtils.damp(flashlight.intensity,flashlightOn?23:0,5,dt);
     const t=now*.001;roomMood=THREE.MathUtils.damp(roomMood,found.has("flashlight")?1:0,.8,dt);roomLight.intensity=1.2+roomMood*12+Math.sin(t*1.25)*(.12+roomMood*.35);fire.intensity=2.2+roomMood*6.8+Math.sin(t*7.4)*(.3+roomMood*.8);windowFill.intensity=1.1+roomMood*2.5;chandelier.rotation.z=Math.sin(t*.28)*.012;chandelier.rotation.x=Math.cos(t*.24)*.008;chandelierLight.intensity=2.3+roomMood*9+Math.sin(t*4.3)*(.2+roomMood*.45);candleLights.forEach((light,i)=>light.intensity=.7+roomMood*.35+Math.sin(t*5.2+i*1.9)*.09);hangingCurtains.forEach((curtain,i)=>curtain.position.x=curtain.userData.baseX+Math.sin(t*.38+i*1.6)*.018);sealPulse=Math.max(0,sealPulse-dt);reds.forEach((l,i)=>l.intensity=1.4+roomMood*6.2+solved*1.1+sealPulse*4+Math.sin(t*1.05+i*1.7)*(.15+roomMood*.35));
