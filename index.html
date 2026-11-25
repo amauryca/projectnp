@@ -3,20 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#070b10">
+  <meta name="theme-color" content="#1a0d0d">
   <meta name="description" content="North Pole Transit Authority — a 3D recovered gate archive.">
   <title>North Pole Transit Authority — Gate 09</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.holly.css">
+  <link rel="stylesheet" href="styles.room.css?v=1">
   <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
-  <script defer src="puzzles.js"></script>
-  <script defer src="main.holly.js"></script>
+  <script defer src="puzzles.js?v=4"></script>
+  <script defer src="main.room.js?v=1"></script>
 </head>
 <body class="immersive">
-  <main class="world" id="world" aria-label="North Pole gate chamber">
-    <canvas id="gate-scene" tabindex="0" aria-label="Interactive 3D gate chamber. Drag to look around; click a lit evidence object to inspect it."></canvas>
+  <main class="world manor-room" id="world" aria-label="The North Room">
+    <canvas id="gate-scene" tabindex="0" aria-label="Walk through one interactive 3D room. Use WASD or the movement pad, drag to look around, crouch to inspect beneath furniture, and press E to examine objects."></canvas>
     <div class="world-vignette" aria-hidden="true"></div>
     <div class="world-grain" aria-hidden="true"></div>
 
@@ -38,12 +38,13 @@
       <button type="button" data-move="back" aria-label="Move backward">▼</button>
       <button type="button" data-move="right" aria-label="Move right">▶</button>
     </div>
+    <button id="crouch-toggle" class="crouch-toggle" type="button" aria-pressed="false">CROUCH</button>
     <div class="scene-prompt" id="scene-prompt" aria-live="polite"></div>
     <div class="toast-message" id="toast-message" aria-live="polite"></div>
 
     <footer class="world-footer">
       <div class="stage-progress" id="stage-progress" aria-label="Puzzle progress"></div>
-      <span id="control-hint">WASD / ARROWS TO MOVE · DRAG TO LOOK · E TO INSPECT</span>
+      <span id="control-hint">WASD TO WALK · DRAG TO LOOK · C TO CROUCH · LAMP + CROUCH TO SEARCH LOW</span>
       <div class="inventory-hud" id="inventory-hud" aria-label="Inventory"></div>
     </footer>
   </main>

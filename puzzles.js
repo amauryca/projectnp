@@ -1,18 +1,18 @@
 window.NP_PUZZLES = [
   {
     name: "Survey 00", label: "REQUIRED GATE SURVEY", objective: "Find the lamp. Search the first gate for the missing tooth.", artifact: "THE FIRST GATE", fragment: "T",
-    hints: ["The first object is low, close to where the corridor begins.", "Recover the hand lamp, then sweep the gate with its beam.", "The brass tooth is caught on the gate's right side. Look directly at it and press E."],
+    hints: ["A small light was left within reach of the writing table.", "Switch it on, then inspect the old gate from close by.", "The missing brass tooth sits low against the gate. Center it and press E."],
     answer: "SURVEY", type: "survey"
   },
   {
-    name: "Exposure Order", label: "PHOTO METADATA / 02", objective: "Order the five photographs by their original capture times.", artifact: "PHOTO STRIP", fragment: "H",
-    hints: ["Use DateTimeOriginal, not the filename or the order the files were recovered.", "The timestamps use one local clock and one timezone.", "Arrange the letters in time order. The result is the cryptex word."],
-    answer: "NORTH", type: "photo-order"
+    name: "Exposure Order", label: "PHOTO METADATA / 02", objective: "Order the photographs by their original capture times. Read the result as the next tool to consult.", artifact: "PHOTO STRIP", fragment: "H",
+    hints: ["Use DateTimeOriginal, not the filename or the order the files were recovered.", "The timestamps use one local clock and one timezone.", "Arrange the letters in time order. They name a globe-based mapping tool."],
+    answer: "EARTH", type: "photo-order"
   },
   {
-    name: "The Cryptex", label: "MECHANICAL LOCK / 03", objective: "Enter the word revealed by the photographs.", artifact: "BRASS CRYPTEX", fragment: "E",
-    hints: ["The photographs resolve to a five-letter direction.", "Turn one ring at a time; each ring changes independently.", "Set the rings to NORTH, then engage the center catch."],
-    answer: "NORTH", type: "cryptex"
+    name: "The Cryptex", label: "GOOGLE EARTH / PLACE DATA / 03", objective: "Find the USF Tampa place card in Google Earth. Use the five-digit postal code in its address to open the cryptex.", artifact: "BRASS CRYPTEX", fragment: "E",
+    hints: ["Search Google Earth for University of South Florida, Tampa.", "Open the campus place card and inspect its published address.", "The five-digit ZIP code is the ring code."],
+    answer: "33620", type: "cryptex"
   },
   {
     name: "The Blind Side", label: "REFLECTIVE SURFACE / 04", objective: "Find the viewing angle at which the mirror inscription becomes readable.", artifact: "MIRROR PLATE", fragment: "G",
