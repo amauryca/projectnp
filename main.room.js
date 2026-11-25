@@ -1,8 +1,8 @@
 (() => {
   const $ = (selector) => document.querySelector(selector);
-  const canvas = $("#gate-scene"), puzzleDialog = $("#puzzle-dialog"), tapeDialog = $("#tape-dialog");
+  const canvas = $("#gate-scene"), puzzleDialog = $("#puzzle-dialog"), tapeDialog = $("#tape-dialog"), morsePanel = $("#morse-panel");
   const ruffleContainer = $("#ruffle-container");
-  const SAVE_KEY = "np-gate-09-progress-v8-count-cryptex";
+  const SAVE_KEY = "np-gate-09-progress-v9-utc-morse-chair";
   const puzzles = window.NP_PUZZLES;
   let progress = readProgress(), sceneController = null, currentPuzzle = -1, gamePlayer = null, createCryptexViewer = null, cryptexViewer = null;
   let activePuzzleState = {};
@@ -29,7 +29,7 @@
     const index = currentIndex(), stage = puzzles[index];
     $("#stage-count").textContent = "ROOM 09-A / PRIVATE RESIDENCE";
     $("#stage-title").textContent = progress.finished ? "The House Is Still" : "The North Room";
-    $("#stage-objective").textContent = progress.finished ? "The room settles. The record is complete." : progress.registerActivated ? "Dust has been disturbed somewhere in the room." : "The room is dark. A hand lamp rests on the writing table to your left.";
+    $("#stage-objective").textContent = progress.finished ? "The room settles. The record is complete." : !progress.registerActivated ? "The room is dark. A hand lamp rests on the writing table to your left." : stage?.type==="morse" ? "The chair faces an unanswered transmission at the writing desk." : stage?.type==="earth" ? "The Earth pin fixes the camera's location. Reconstruct its timestamp in UTC." : "Dust has been disturbed somewhere in the room.";
     $("#gate-state").textContent = progress.finished ? "RECORD CLOSED" : progress.registerActivated ? "ROOM OCCUPIED" : "POWER LOST";
     const progressBar = $("#stage-progress"); progressBar.replaceChildren();
     for (let i=0;i<10;i++) { const dot=document.createElement("i"); dot.className = i < progress.solved.length ? "complete" : i === index && !progress.finished ? "current" : ""; progressBar.append(dot); }
@@ -52,7 +52,7 @@
   function onSceneFocusItem(id) {
     const prompt=$("#scene-prompt"); if(!prompt)return;
     if(!id){prompt.classList.remove("visible");return;}
-    const text={flashlight:"HAND LAMP · CLICK TO RECOVER",gate_tooth:"BRASS KEY · CLICK / E TO TAKE",cryptex_key:"KEY RECOVERED",artifact:"EVIDENCE FOUND · CLICK TO INSPECT"};
+    const text={flashlight:"HAND LAMP · CLICK TO RECOVER",gate_tooth:"BRASS KEY · CLICK / E TO TAKE",chair:sceneController?.isSeated()?"OPERATOR'S CHAIR · C TO STAND":"OPERATOR'S CHAIR · CLICK / E TO SIT",cryptex_key:"KEY RECOVERED",artifact:"EVIDENCE FOUND · CLICK TO INSPECT"};
     prompt.textContent=text[id]||"EVIDENCE FOUND · CLICK TO INSPECT"; prompt.classList.add("visible");
   }
   function onSceneItemFound(id) {
@@ -68,13 +68,43 @@
   function onSceneSelect(index) {
     // The only inspectable evidence is on the next unopened gate.
     if(!progress.registerActivated || progress.finished || index!==currentIndex())return;
+    if(puzzles[index]?.type==="morse"){
+      if(!sceneController?.isSeated()){showToast("THE RECEIVER IS SET FOR THE OPERATOR'S CHAIR");return;}
+      openMorseStation(index);return;
+    }
     openPuzzle(index);
+  }
+  function openMorseStation(index){
+    if(index!==currentIndex()||!sceneController?.isSeated())return;
+    currentPuzzle=index;activePuzzleState={};morsePanel.hidden=false;morsePanel.classList.remove("morse-error");
+    $("#morse-incoming").textContent="·−− / · / ··· / −";$("#morse-sent").textContent="—";$("#morse-status").textContent="SHORT TAP = DOT · HOLD = DASH · PAUSE BETWEEN LETTERS";
+    sceneController.setMorseActive(true);resetMorseInput();
+  }
+  let morseLetters=[],morseCurrent="",morseTimer=null;
+  function resetMorseInput(){clearTimeout(morseTimer);morseLetters=[];morseCurrent="";$("#morse-sent").textContent="—";}
+  function receiveMorsePulse(duration){
+    if(morsePanel.hidden||currentPuzzle<0||!sceneController?.isSeated())return;
+    if(morseTimer)clearTimeout(morseTimer);
+    morseCurrent+=duration>=320?"−":"·";
+    const preview=[...morseLetters,morseCurrent].join(" / ");$("#morse-sent").textContent=preview;
+    $("#morse-status").textContent="SIGNAL RECEIVED · PAUSE BETWEEN LETTERS";
+    morseTimer=setTimeout(()=>{
+      if(morseCurrent)morseLetters.push(morseCurrent);morseCurrent="";morseTimer=null;
+      if(morseLetters.length<4)return;
+      const sent=morseLetters.join("/");
+      if(sent==="·−−/·/···/−"){
+        activePuzzleState.morseSent="WEST";$("#morse-status").textContent="RETURN SIGNAL ACKNOWLEDGED";solvePuzzle("WEST");
+      }else{
+        morsePanel.classList.add("morse-error");$("#morse-status").textContent="NO ACKNOWLEDGEMENT · RESET AND TRY AGAIN";
+        setTimeout(()=>{if(!morsePanel.hidden){morsePanel.classList.remove("morse-error");$("#morse-status").textContent="REPLY FROM THE KEY";resetMorseInput();}},1100);
+      }
+    },1050);
   }
   async function initializeScene() {
     try {
-      const sceneModule=await import("./scene3d.room.js?v=8");
+      const sceneModule=await import("./scene3d.room.js?v=9");
       const {createGateScene}=sceneModule; createCryptexViewer=sceneModule.createCryptexViewer;
-      sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem);
+      sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem,receiveMorsePulse,()=>{if(!morsePanel.hidden){morsePanel.hidden=true;resetMorseInput();}});
       sceneController.setRegisterActive(progress.registerActivated);
       sceneController.setSolvedCount(progress.solved.length,progress.finished);
       sceneController.setFlashlight(hasItem("flashlight"));
@@ -86,6 +116,7 @@
 
   function openPuzzle(index) {
     if(index!==currentIndex() || index===0 || !progress.registerActivated)return;
+    if(puzzles[index]?.type==="morse"){if(!sceneController?.isSeated()){showToast("THE RECEIVER IS SET FOR THE OPERATOR'S CHAIR");return;}openMorseStation(index);return;}
     const puzzle=puzzles[index]; currentPuzzle=index; activePuzzleState={}; hintIndex=Number(progress.hints[index])||0;
     $("#puzzle-kicker").textContent=`EVIDENCE / ${String(index+1).padStart(2,"0")} · ${puzzle.label}`;
     $("#puzzle-title").textContent=puzzle.name; $("#puzzle-intro").textContent=puzzle.objective;
@@ -126,8 +157,8 @@
       box.innerHTML='<p class="artifact-copy">The scan is a composite. Isolate a color channel and inspect the grain. One channel carries the writing.</p><div class="channel-preview" id="channel-preview"><span id="channel-secret">••••••</span></div><div class="channel-controls"><button type="button" data-channel="red">RED</button><button type="button" data-channel="green">GREEN</button><button type="button" data-channel="blue">BLUE</button></div><div class="artifact-readout" id="channel-readout">COMPOSITE VIEW</div>';
       box.querySelectorAll("[data-channel]").forEach(button=>button.addEventListener("click",()=>{const ch=button.dataset.channel;activePuzzleState.channel=ch;box.querySelectorAll("[data-channel]").forEach(b=>b.classList.toggle("selected",b===button));$("#channel-preview").dataset.channel=ch;$("#channel-secret").textContent=ch==="blue"?"RETURN":"••••••";$("#channel-readout").textContent=ch==="blue"?"BLUE CHANNEL / TEXT RECOVERED":"CHANNEL EMPTY";}));setAnswerMode("RECOVERED WORD");
     } else if(p.type==="earth") {
-      box.innerHTML='<p class="artifact-copy">The survey photograph carries these GPS coordinates:</p><div class="coordinate-card">28.0587031° N<br>82.4138539° W</div><p class="artifact-copy">The location is on USF Tampa. Compare it with the public campus history record. What year was the campus groundbreaking?</p><div class="link-row"><a href="https://earth.google.com/web/search/28.0587031,-82.4138539" target="_blank" rel="noreferrer">OPEN COORDINATE IN GOOGLE EARTH ↗</a><a href="https://www.usf.edu/about-usf/history.aspx" target="_blank" rel="noreferrer">USF HISTORY ↗</a></div><p class="small-note">Online research only. No campus visit is required.</p>';
-      setAnswerMode("YEAR FROM THE RECORD");
+      box.innerHTML='<p class="artifact-copy">The recovered image is tagged at the coordinate below. Verify the location in Google Earth, then reconstruct the camera\'s absolute capture time from its metadata. The archive accepted only UTC.</p><div class="coordinate-card">28.0587031° N<br>82.4138539° W</div><div class="link-row"><a href="https://earth.google.com/web/search/28.0587031,-82.4138539" target="_blank" rel="noreferrer">VERIFY THE PIN IN GOOGLE EARTH ↗</a></div><div class="utc-record"><span>DATETIMEORIGINAL</span><b>1998:12:24 22:41:12</b><span>CAMERA CLOCK · UTC−05:00</span><small>Convert the instant, including the date rollover. Submit UTC as YYYYMMDDHHMMSS.</small></div><p class="small-note">This is an online research puzzle. No campus visit is needed.</p>';
+      setAnswerMode("UTC TIMESTAMP · 14 DIGITS");
     } else if(p.type==="shadow") {
       box.innerHTML='<p class="artifact-copy">Rotate the inspection lamp. Align the moving shadow with the engraved line; the aligned relief exposes a four-digit record.</p><div class="shadow-lab"><div class="shadow-mark"></div><div class="shadow-bar" id="shadow-bar"></div></div><label class="control-label" for="shadow-angle">LAMP BEARING <output id="shadow-angle-readout">0°</output></label><input class="range-control" id="shadow-angle" type="range" min="0" max="180" step="15" value="0"><div class="artifact-readout" id="shadow-readout">SHADOW OFF AXIS</div>';
       const slider=$("#shadow-angle");slider.addEventListener("input",()=>{const a=Number(slider.value),aligned=a===90;$("#shadow-bar").style.transform=`rotate(${a}deg)`;$("#shadow-angle-readout").textContent=`${a}°`;$("#shadow-readout").textContent=aligned?"ETCHING EXPOSED: 1218":"SHADOW OFF AXIS";});setActionMode("TAKE THE READING ↗");$("#puzzle-action").onclick=()=>Number(slider.value)===90?solvePuzzle(p.answer):feedback("THE SHADOW MISSES THE ENGRAVING.",true);
@@ -146,6 +177,7 @@
     if(puzzle.type==="channels"&&activePuzzleState.channel!=="blue"){feedback("ISOLATE THE BLUE CHANNEL BEFORE RECORDING THE WORD.",true);return;}
     if(puzzle.type==="route"&&activePuzzleState.route!==p.answer){feedback("COMPLETE THE ROUTE PANEL BEFORE RECORDING IT.",true);return;}
     if(puzzle.type==="cryptex"&&activePuzzleState.cryptexWord!==p.answer){feedback("THE RINGS MUST BE TURNED INTO ALIGNMENT FIRST.",true);return;}
+    if(puzzle.type==="morse"&&activePuzzleState.morseSent!==p.answer){$("#morse-status").textContent="THE REGISTER REQUIRES A PHYSICAL KEY REPLY";return;}
     feedback(`RECORD ACCEPTED · FRAGMENT ${puzzle.fragment} RECOVERED`);
     if(!progress.solved.includes(currentPuzzle))progress.solved.push(currentPuzzle);
     progress.fragments[currentPuzzle]=puzzle.fragment;
@@ -154,7 +186,7 @@
     puzzleDialog.classList.add("solving");$("#transition-cover").classList.add("sweep");
     if(progress.finished)showToast("CONTINUITY RESTORED · PASSAGE OPEN");
     else showToast(`SEAL ${String(currentPuzzle+1).padStart(2,"0")} RELEASED`);
-    setTimeout(()=>{puzzleDialog.classList.remove("solving");if(puzzleDialog.open)puzzleDialog.close();sceneController?.setCryptexVisible(false);$("#transition-cover").classList.remove("sweep");},850);
+    setTimeout(()=>{puzzleDialog.classList.remove("solving");if(puzzleDialog.open)puzzleDialog.close();morsePanel.hidden=true;sceneController?.setMorseActive(false);sceneController?.setCryptexVisible(false);$("#transition-cover").classList.remove("sweep");},850);
   }
   function submitAnswer(event) { event.preventDefault();if(currentPuzzle<0)return;solvePuzzle($("#puzzle-answer").value); }
   function requestHint() {
@@ -199,7 +231,9 @@
   $("#music-toggle").addEventListener("click",()=>setMusic(!musicOn));
   $("#close-tape").addEventListener("click",()=>tapeDialog.close());
   const crouchButton=$("#crouch-toggle");
-  crouchButton?.addEventListener("click",()=>{const next=crouchButton.getAttribute("aria-pressed")!=="true";crouchButton.setAttribute("aria-pressed",String(next));crouchButton.textContent=next?"STAND":"CROUCH";sceneController?.setCrouching(next);});
+  crouchButton?.addEventListener("click",()=>{if(sceneController?.isSeated()){sceneController.toggleSeat();return;}const next=crouchButton.getAttribute("aria-pressed")!=="true";crouchButton.setAttribute("aria-pressed",String(next));crouchButton.textContent=next?"STAND":"CROUCH";sceneController?.setCrouching(next);});
+  $("#morse-close")?.addEventListener("click",()=>{morsePanel.hidden=true;sceneController?.setMorseActive(false);resetMorseInput();});
+  $("#morse-reset")?.addEventListener("click",()=>{resetMorseInput();$("#morse-status").textContent="REPLY CLEARED · SHORT TAP = DOT · HOLD = DASH";});
   tapeDialog.addEventListener("click",e=>{if(e.target===tapeDialog)tapeDialog.close();});
   ["pointerdown","keydown","touchstart"].forEach(type=>window.addEventListener(type,primeMusic,{passive:type!=="keydown"}));
   window.addEventListener("resize",()=>sceneController?.resize());
