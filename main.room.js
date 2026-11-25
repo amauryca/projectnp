@@ -160,7 +160,7 @@
       setAnswerMode("DECODED DIRECTION");
     } else if(p.type==="metadata-photos") {
       const records=[
-        {id:"D",time:"1998:12:24 22:41:12",note:"The echo will retUr",asset:"photo-04.svg"},
+        {id:"D",time:"1998:12:24 22:41:12",note:"An echo calls back to yoU",asset:"photo-04.svg"},
         {id:"B",time:"1998:12:24 23:03:54",note:"Under the old lamp, remembeR",asset:"photo-05.svg"},
         {id:"C",time:"1998:12:24 20:55:15",note:"Snow keeps its coloR",asset:"photo-01.svg"},
         {id:"E",time:"1998:12:25 00:18:02",note:"No footprints remain dowN",asset:"photo-06.svg"},
