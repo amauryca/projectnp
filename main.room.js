@@ -175,9 +175,9 @@
   function solvePuzzle(value) {
     const puzzle=puzzles[currentPuzzle]; if(!puzzle||currentPuzzle!==currentIndex()||!progress.registerActivated||normalized(value)!==normalized(puzzle.answer)){feedback("THE MECHANISM DOES NOT ACCEPT THAT READING.",true);return;}
     if(puzzle.type==="channels"&&activePuzzleState.channel!=="blue"){feedback("ISOLATE THE BLUE CHANNEL BEFORE RECORDING THE WORD.",true);return;}
-    if(puzzle.type==="route"&&activePuzzleState.route!==p.answer){feedback("COMPLETE THE ROUTE PANEL BEFORE RECORDING IT.",true);return;}
-    if(puzzle.type==="cryptex"&&activePuzzleState.cryptexWord!==p.answer){feedback("THE RINGS MUST BE TURNED INTO ALIGNMENT FIRST.",true);return;}
-    if(puzzle.type==="morse"&&activePuzzleState.morseSent!==p.answer){$("#morse-status").textContent="THE REGISTER REQUIRES A PHYSICAL KEY REPLY";return;}
+    if(puzzle.type==="route"&&activePuzzleState.route!==puzzle.answer){feedback("COMPLETE THE ROUTE PANEL BEFORE RECORDING IT.",true);return;}
+    if(puzzle.type==="cryptex"&&activePuzzleState.cryptexWord!==puzzle.answer){feedback("THE RINGS MUST BE TURNED INTO ALIGNMENT FIRST.",true);return;}
+    if(puzzle.type==="morse"&&activePuzzleState.morseSent!==puzzle.answer){$("#morse-status").textContent="THE REGISTER REQUIRES A PHYSICAL KEY REPLY";return;}
     feedback(`RECORD ACCEPTED · FRAGMENT ${puzzle.fragment} RECOVERED`);
     if(!progress.solved.includes(currentPuzzle))progress.solved.push(currentPuzzle);
     progress.fragments[currentPuzzle]=puzzle.fragment;
