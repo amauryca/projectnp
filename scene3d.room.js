@@ -42,12 +42,12 @@ export function createGateScene(canvas,onSelect=()=>{},onItemFound=()=>{},onFocu
   for(let x of [-7.82,7.82]){box(.1,1.2,13.5,wood,x,.72,0,false);box(.13,.08,13.5,trim,x,1.35,0,false);for(let z=-6;z<=6;z+=1.4)box(.12,1,.045,trim,x,.74,z,false);}
   // Rug and the red canopy bed, with a low crawl gap beneath it.
   const rug=box(8,.035,6,new THREE.MeshStandardMaterial({color:0x431d1e,roughness:1}),0,.015,-.6,false);rug.rotation.y=.05;
-  box(4.3,.48,2.8,wood,0,.62,-3.3);box(4.1,.18,2.55,redFabric,0,.98,-3.3);box(4.5,1.5,.22,wood,0,1.45,-4.85);box(4.7,.16,.22,trim,0,2.2,-4.85);
-  for(const x of [-2.08,2.08])for(const z of [-4.58,-2.02]){box(.14,2.5,.14,trim,x,1.3,z);const orb=new THREE.Mesh(new THREE.SphereGeometry(.13,12,10),trim);orb.position.set(x,2.58,z);room.add(orb);}
+  box(4.2,.14,2.65,wood,0,.82,-3.3);box(4.1,.18,2.55,redFabric,0,.98,-3.3);box(4.5,1.5,.22,wood,0,1.45,-4.85);box(4.7,.16,.22,trim,0,2.2,-4.85);
+  for(const x of [-2.08,2.08])for(const z of [-4.58,-2.02]){box(.14,2.5,.14,trim,x,1.3,z);box(.13,.78,.13,wood,x,.39,z);const orb=new THREE.Mesh(new THREE.SphereGeometry(.13,12,10),trim);orb.position.set(x,2.58,z);room.add(orb);}
   const canopy=new THREE.Mesh(fabricGeometry(4.4,3.1,3),redFabric);canopy.position.set(0,3.65,-3.3);canopy.rotation.x=-Math.PI/2;room.add(canopy);
   for(const x of [-2.08,2.08]){const drape=new THREE.Mesh(fabricGeometry(3.1,2.45,x),redFabric);drape.position.set(x,2.55,-3.3);drape.rotation.y=Math.PI/2;room.add(drape);}
   // Covered furniture with folded, irregular cloth surfaces.
-  const covered=(x,z,w,d,h,seed)=>{box(w,.85,d,wood,x,.43,z);const top=new THREE.Mesh(fabricGeometry(w+.55,h,seed),fabric);top.rotation.x=-Math.PI/2;top.position.set(x,.9+h/2,z);room.add(top);for(let s of [-1,1]){const side=new THREE.Mesh(fabricGeometry(d,h*.7,seed+s),fabric);side.rotation.y=Math.PI/2;side.position.set(x+s*w*.49,.72,z);room.add(side);}return top;};
+  const covered=(x,z,w,d,h,seed)=>{box(w,.14,d,wood,x,.86,z);for(const sx of [-1,1])for(const sz of [-1,1])box(.12,.82,.12,wood,x+sx*(w/2-.12),.43,z+sz*(d/2-.12));const top=new THREE.Mesh(fabricGeometry(w+.4,d+.4,seed),fabric);top.rotation.x=-Math.PI/2;top.position.set(x,.96,z);room.add(top);for(const s of [-1,1]){const side=new THREE.Mesh(fabricGeometry(d+.3,h,seed+s),fabric);side.rotation.y=Math.PI/2;side.position.set(x+s*w*.49,.48,z);room.add(side);}const back=new THREE.Mesh(fabricGeometry(w,h,seed+2),fabric);back.position.set(x,.48,z-d*.48);room.add(back);return top;};
   covered(-5,-1.5,2.5,2,1.45,2);covered(4.9,-2.1,2.8,2.1,1.65,4);covered(-4,4,2.2,1.7,1.15,7);
   // Desk and drawers, cabinet, wall mirror and window.
   box(2.5,.18,1.05,wood,-5,1.2,-4.6);box(2.2,.12,.9,trim,-5,1.36,-4.6);for(const x of [-6,-4])box(.16,1.2,.16,wood,x,.62,-4.6);
