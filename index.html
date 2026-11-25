@@ -9,10 +9,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.room.css?v=5">
+  <link rel="stylesheet" href="styles.room.css?v=6">
   <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
-  <script defer src="puzzles.js?v=8"></script>
-  <script defer src="main.room.js?v=8"></script>
+  <script defer src="puzzles.js?v=9"></script>
+  <script defer src="main.room.js?v=9"></script>
 </head>
 <body class="immersive">
   <main class="world manor-room" id="world" aria-label="The North Room">
@@ -41,6 +41,15 @@
     <button id="crouch-toggle" class="crouch-toggle" type="button" aria-pressed="false">CROUCH</button>
     <div class="scene-prompt" id="scene-prompt" aria-live="polite"></div>
     <div class="toast-message" id="toast-message" aria-live="polite"></div>
+
+    <aside id="morse-panel" class="morse-panel" aria-label="Telegraph reply station" hidden>
+      <div class="morse-panel-head"><span>OPERATOR LINK / 05</span><button id="morse-close" type="button" aria-label="Close signal station">×</button></div>
+      <p class="morse-panel-title">Return the signal</p>
+      <div class="morse-transmission"><small>INCOMING</small><strong id="morse-incoming">·−− / · / ··· / −</strong></div>
+      <div class="morse-transmission sent"><small>YOUR KEY</small><strong id="morse-sent">—</strong></div>
+      <p id="morse-status" class="morse-status" aria-live="polite">SHORT TAP = DOT · HOLD = DASH · PAUSE BETWEEN LETTERS</p>
+      <button id="morse-reset" class="morse-reset" type="button">CLEAR REPLY</button>
+    </aside>
 
     <footer class="world-footer">
       <div class="stage-progress" id="stage-progress" aria-label="Puzzle progress"></div>
