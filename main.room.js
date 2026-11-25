@@ -72,7 +72,7 @@
   }
   async function initializeScene() {
     try {
-      const sceneModule=await import("./scene3d.room.js?v=2");
+      const sceneModule=await import("./scene3d.room.js?v=3");
       const {createGateScene}=sceneModule; createCryptexViewer=sceneModule.createCryptexViewer;
       sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem);
       sceneController.setRegisterActive(progress.registerActivated);
