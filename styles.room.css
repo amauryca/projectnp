@@ -27,3 +27,17 @@ html,body.immersive,.immersive .world{background:#160b0b}
 .count-record>div:last-child{border-bottom:0}.count-record span{color:#a87951}.count-record i{font-style:normal;text-align:center;color:#a87951}
 @media(max-width:700px){.stage-hud{left:18px;bottom:150px;max-width:74vw}.world-footer{min-height:49px}.world-footer #control-hint{font-size:6px;max-width:45vw;line-height:1.5}.move-pad{bottom:85px}.crouch-toggle{bottom:48px}.inventory-hud{gap:3px}}
 @media(max-height:520px){.stage-hud{bottom:74px}.move-pad{bottom:66px;transform:scale(.8);transform-origin:bottom left}.crouch-toggle{bottom:28px}.world-footer{min-height:40px}}
+
+/* Quiet, staggered arrival gives the room a deliberate opening without slowing controls. */
+.manor-room #gate-scene{animation:room-reveal 1.15s cubic-bezier(.2,.72,.2,1) both}
+.manor-room .world-header,.manor-room .stage-hud,.manor-room .world-footer{animation:room-ui-arrive .7s cubic-bezier(.2,.72,.2,1) both}
+.manor-room .stage-hud{animation-delay:.12s}.manor-room .world-footer{animation-delay:.2s}
+.manor-room .move-pad button,.manor-room .crouch-toggle,.manor-room .music-toggle{transition:transform .22s ease,border-color .22s ease,background-color .22s ease,color .22s ease,opacity .22s ease}
+.manor-room .move-pad button:hover,.manor-room .crouch-toggle:hover,.manor-room .music-toggle:hover{border-color:rgba(224,185,117,.68);opacity:1}
+.manor-room .move-pad button:active{transform:scale(.94)}
+.manor-room .scene-prompt,.manor-room .toast-message{backdrop-filter:blur(10px);box-shadow:0 12px 38px rgba(0,0,0,.28)}
+.manor-room .puzzle-dialog[open]:not(.solving) .puzzle-card{animation:evidence-arrive .42s cubic-bezier(.2,.72,.2,1) both}
+@keyframes room-reveal{from{opacity:0;filter:brightness(.68)}to{opacity:1;filter:brightness(1)}}
+@keyframes room-ui-arrive{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@keyframes evidence-arrive{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){.manor-room #gate-scene,.manor-room .world-header,.manor-room .stage-hud,.manor-room .world-footer{animation:none}.manor-room .move-pad button,.manor-room .crouch-toggle,.manor-room .music-toggle{transition:none}}
