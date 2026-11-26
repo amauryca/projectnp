@@ -2,26 +2,27 @@
   const $ = (selector) => document.querySelector(selector);
   const canvas = $("#gate-scene"), puzzleDialog = $("#puzzle-dialog"), tapeDialog = $("#tape-dialog"), morsePanel = $("#morse-panel");
   const ruffleContainer = $("#ruffle-container");
-  const SAVE_KEY = "np-gate-09-progress-v10-image-evidence";
+  const SAVE_KEY = "np-gate-09-progress-v12-photo-lock-ending";
   const LEGACY_SAVE_KEY = "np-gate-09-progress-v9-utc-morse-chair";
   const puzzles = window.NP_PUZZLES;
+  const testMode = new URLSearchParams(location.search).get("test") === "1";
   let progress = readProgress(), sceneController = null, currentPuzzle = -1, gamePlayer = null, createCryptexViewer = null, cryptexViewer = null;
   let activePuzzleState = {};
   const MUSIC_KEY = "np-gate-09-music-v1";
-  let hintIndex = 0, musicOn = false, musicContext = null, musicMaster = null, musicNodes = [];
+  let musicOn = false, musicContext = null, musicMaster = null, musicNodes = [];
 
   function readProgress() {
     try {
       const hasCurrentSave = Boolean(localStorage.getItem(SAVE_KEY));
-      const data = JSON.parse(localStorage.getItem(SAVE_KEY) || localStorage.getItem(LEGACY_SAVE_KEY) || "{}");
-      const solved = Array.isArray(data.solved) ? [...new Set(data.solved.filter(n => Number.isInteger(n) && n >= 0 && n < 10 && (hasCurrentSave || n < 3)))].sort((a,b) => a-b) : [];
+      const data = JSON.parse(localStorage.getItem(SAVE_KEY) || localStorage.getItem("np-gate-09-progress-v11-winter-ending") || localStorage.getItem("np-gate-09-progress-v10-image-evidence") || localStorage.getItem(LEGACY_SAVE_KEY) || "{}");
+      const currentPuzzleSet = hasCurrentSave || data.version === 12;
+      const solved = Array.isArray(data.solved) ? [...new Set(data.solved.filter(n => Number.isInteger(n) && n >= 0 && n < 10 && (currentPuzzleSet ? true : n < 6)))].sort((a,b) => a-b) : [];
       // Enforce a contiguous route. A later saved seal can never skip an earlier one.
       const ordered = []; for (let i = 0; i < solved.length && solved[i] === i; i++) ordered.push(i);
-      const hints = data.hints && typeof data.hints === "object" ? Object.fromEntries(Object.entries(data.hints).filter(([key]) => hasCurrentSave || Number(key) < 3)) : {};
-      return { solved: ordered, inventory: Array.isArray(data.inventory) ? [...new Set(data.inventory.filter(x => ["flashlight","gate_tooth","cryptex_key"].includes(x)))] : [], hints, fragments: Array.isArray(data.fragments) ? data.fragments.slice(0,hasCurrentSave?10:3) : [], registerActivated: Boolean(data.registerActivated && ordered.includes(0)), finished: ordered.length === 10 };
-    } catch { return { solved: [], inventory: [], hints: {}, fragments: [], registerActivated: false, finished: false }; }
+      return { version: 12, solved: ordered, inventory: Array.isArray(data.inventory) ? [...new Set(data.inventory.filter(x => ["flashlight","gate_tooth","cryptex_key"].includes(x)))] : [], fragments: Array.isArray(data.fragments) ? data.fragments.slice(0,currentPuzzleSet?10:6) : [], registerActivated: Boolean(data.registerActivated && ordered.includes(0)), finished: ordered.length === 10 };
+    } catch { return { solved: [], inventory: [], fragments: [], registerActivated: false, finished: false }; }
   }
-  function saveProgress() { localStorage.setItem(SAVE_KEY, JSON.stringify(progress)); }
+  function saveProgress() { progress.version = 12; localStorage.setItem(SAVE_KEY, JSON.stringify(progress)); }
   function hasItem(id) { return progress.inventory.includes(id); }
   function currentIndex() { return Math.min(progress.solved.length, puzzles.length - 1); }
   function showToast(message) {
@@ -32,7 +33,7 @@
     const index = currentIndex(), stage = puzzles[index];
     $("#stage-count").textContent = "ROOM 09-A / PRIVATE RESIDENCE";
     $("#stage-title").textContent = progress.finished ? "The House Is Still" : "The North Room";
-    $("#stage-objective").textContent = progress.finished ? "The room settles. The record is complete." : !progress.registerActivated ? "The room is dark. A hand lamp rests on the writing table to your left." : stage?.type==="morse" ? "The chair faces an unanswered transmission at the writing desk." : stage?.type==="earth" ? "The Earth pin fixes the camera's location. Reconstruct its timestamp in UTC." : stage?.type==="earth-mirror" ? "Compare the mirror with the recovered Google Earth captures." : stage?.type==="metadata-photos" ? "Inspect the photographs and recover their hidden camera-note message." : "Dust has been disturbed somewhere in the room.";
+    $("#stage-objective").textContent = progress.finished ? "The room settles. The record is complete." : !progress.registerActivated ? "The room is dark. A hand lamp rests on the writing table to your left." : stage?.objective || "Dust has been disturbed somewhere in the room.";
     $("#gate-state").textContent = progress.finished ? "RECORD CLOSED" : progress.registerActivated ? "ROOM OCCUPIED" : "POWER LOST";
     const progressBar = $("#stage-progress"); progressBar.replaceChildren();
     for (let i=0;i<10;i++) { const dot=document.createElement("i"); dot.className = i < progress.solved.length ? "complete" : i === index && !progress.finished ? "current" : ""; progressBar.append(dot); }
@@ -105,7 +106,7 @@
   }
   async function initializeScene() {
     try {
-    const sceneModule=await import("./scene3d.room.js?v=16");
+    const sceneModule=await import("./scene3d.room.js?v=19");
       const {createGateScene}=sceneModule; createCryptexViewer=sceneModule.createCryptexViewer;
       sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem,receiveMorsePulse,()=>{if(!morsePanel.hidden){morsePanel.hidden=true;resetMorseInput();}});
       sceneController.setRegisterActive(progress.registerActivated);
@@ -114,39 +115,24 @@
       sceneController.setCollectedItems(progress.inventory);
       sceneController.setCryptexLetters(["0","0","0","0","0"]);
       renderStage();
+      if(progress.finished){sceneController.setControlsLocked(true);startEscapeCutscene();}
     } catch(error) { showToast("THE GATE SCENE COULD NOT LOAD · RELOAD THE ARCHIVE"); console.error("3D gate scene failed",error); }
   }
 
   function openPuzzle(index) {
     if(index!==currentIndex() || index===0 || !progress.registerActivated)return;
     if(puzzles[index]?.type==="morse"){if(!sceneController?.isSeated()){showToast("THE RECEIVER IS SET FOR THE OPERATOR'S CHAIR");return;}openMorseStation(index);return;}
-    const puzzle=puzzles[index]; currentPuzzle=index; activePuzzleState={}; hintIndex=Number(progress.hints[index])||0;
+    const puzzle=puzzles[index]; currentPuzzle=index; activePuzzleState={};
     $("#puzzle-kicker").textContent=`EVIDENCE / ${String(index+1).padStart(2,"0")} · ${puzzle.label}`;
     $("#puzzle-title").textContent=puzzle.name; $("#puzzle-intro").textContent=puzzle.objective;
     $("#puzzle-feedback").textContent=""; $("#puzzle-feedback").classList.remove("error");
     $("#puzzle-answer").value=""; $("#puzzle-form").hidden=true; $("#puzzle-action").hidden=true;
-    $("#hint-button").textContent=hintIndex>=puzzle.hints.length?"HINTS EXHAUSTED":`REQUEST HINT ${hintIndex+1} / ${puzzle.hints.length}`;
-    $("#hint-button").disabled=hintIndex>=puzzle.hints.length;
     renderPuzzleWidget(puzzle);
     if(puzzle.type==="cryptex")sceneController?.setCryptexVisible(true);
     puzzleDialog.showModal(); sceneController?.setPaused(true);if(puzzle.type==="cryptex")requestAnimationFrame(()=>cryptexViewer?.resize());
   }
   function setAnswerMode(label="ENTER RECOVERED CODE") { $("#puzzle-form").hidden=false; $("#answer-label").textContent=label; }
   function setActionMode(label="CONFIRM ↗") { const b=$("#puzzle-action"); b.textContent=label; b.hidden=false; }
-  function makeEarthMapSvg(rotation) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 360">
-      <defs><linearGradient id="ground" x2=".2" y2="1"><stop stop-color="#59634d"/><stop offset="1" stop-color="#30392f"/></linearGradient><linearGradient id="lake" x2="1" y2="1"><stop stop-color="#496267"/><stop offset="1" stop-color="#20393d"/></linearGradient><linearGradient id="road" x2="0" y2="1"><stop stop-color="#bdb69d"/><stop offset=".5" stop-color="#ded4b9"/><stop offset="1" stop-color="#9f9880"/></linearGradient></defs>
-      <rect width="600" height="360" fill="url(#ground)"/><g transform="rotate(${rotation} 300 180)">
-        <path d="M40 335 560 25" stroke="#aaa58d" stroke-width="18" opacity=".7"/><path d="M40 335 560 25" stroke="#d1c8aa" stroke-width="8" opacity=".7"/><path d="M290 -40 324 -40 324 400 290 400Z" fill="url(#road)"/>
-        <ellipse cx="165" cy="173" rx="54" ry="126" fill="url(#lake)" stroke="#81918a" stroke-opacity=".4" stroke-width="8"/><path d="M78 260q62-52 122 5t-6 58q-75 12-116-8Z" fill="#627957" opacity=".9"/>
-        <path d="M393 78h112v52H393zM455 211h78v68h-78zM205 68h62v44h-62z" fill="#a9a995" stroke="#777b6e" stroke-width="5"/><path d="M356 156q45-28 89 0t4 46q-58 10-93-4Z" fill="#627957" opacity=".88"/><path d="M73 66h104v20H73zM490 304h76v18h-76z" fill="#8c927a" opacity=".7"/>
-      </g><rect x="3" y="3" width="594" height="354" fill="none" stroke="#dfd0ad" stroke-opacity=".35" stroke-width="6"/></svg>`;
-  }
-  function scrambleEarthMap() {
-    const pieces=Array.from({length:9},(_,i)=>i);let blank=8,previous=-1;
-    for(let turn=0;turn<42;turn++){const row=Math.floor(blank/3),column=blank%3;const options=[row>0?blank-3:-1,row<2?blank+3:-1,column>0?blank-1:-1,column<2?blank+1:-1].filter(i=>i>=0&&i!==previous);const next=options[Math.floor(Math.random()*options.length)];[pieces[blank],pieces[next]]=[pieces[next],pieces[blank]];previous=blank;blank=next;}
-    return pieces.every((piece,index)=>piece===index)?scrambleEarthMap():pieces;
-  }
   function renderPuzzleWidget(p) {
     const box=$("#puzzle-content"); box.replaceChildren();
     if(p.type==="photo-order") {
@@ -165,42 +151,10 @@
       const drawControls=()=>{controls.replaceChildren();letters.forEach((value,i)=>{const dial=document.createElement("div");dial.className="cryptex-dial";dial.innerHTML=`<button type="button" aria-label="Turn ring ${i+1} backward">−</button><small>${String(i+1).padStart(2,"0")} · ${alphabet[value]}</small><button type="button" aria-label="Turn ring ${i+1} forward">+</button>`;const buttons=dial.querySelectorAll("button");buttons[0].addEventListener("click",()=>cryptexViewer?.turn(i,-1));buttons[1].addEventListener("click",()=>cryptexViewer?.turn(i,1));controls.append(dial);});};
       sync();drawControls();$("#puzzle-action").hidden=true;$("#cryptex-confirm").addEventListener("click",()=>confirmCode(cryptexViewer?.getCode()??letters.map(x=>alphabet[x]).join("")));
     } else if(p.type==="earth-mirror") {
-      box.innerHTML='<p class="artifact-copy">Reconstruct each recovered campus capture by sliding the map pieces into the empty square. When all four views are whole, compare Lake Behnke and the straight road with the mirror, then select the matching camera heading.</p><p class="small-note">Click a piece beside the empty square to slide it. You can also use Tab and Enter. Every frame must be rebuilt before its heading is revealed.</p><div class="earth-captures" id="earth-captures"></div><div class="link-row"><a href="https://earth.google.com/web/@28.0587,-82.41385,850a,2500d,35y,0h,0t,0r" target="_blank" rel="noreferrer">OPEN THIS USF CAMPUS VIEW IN GOOGLE EARTH ↗</a></div><p class="small-note">These are original schematic captures based on the campus layout. Google Earth imagery and dates can vary by region.</p><div class="artifact-readout" id="earth-capture-readout" aria-live="polite">MAPS RESTORED · 0 / 4 · NO CAPTURE SELECTED</div>';
-      const captures=[{heading:"000",rotation:0},{heading:"090",rotation:90},{heading:"180",rotation:180},{heading:"270",rotation:270}];
-      for(let i=captures.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[captures[i],captures[j]]=[captures[j],captures[i]];}
-      const cards=$("#earth-captures"),restored=new Set();
-      captures.forEach((capture,index)=>{
-        const article=document.createElement("article");article.className="earth-capture";
-        const title=document.createElement("div");title.className="earth-capture-head";
-        const frame=document.createElement("b");frame.textContent=`FIELD FRAME · ${String.fromCharCode(65+index)}`;
-        const state=document.createElement("small");state.textContent="SCRAMBLED";title.append(frame,state);
-        const grid=document.createElement("div");grid.className="earth-image-board";grid.setAttribute("role","group");grid.setAttribute("aria-label",`Scrambled campus map frame ${String.fromCharCode(65+index)}`);
-        const image=`url("data:image/svg+xml,${encodeURIComponent(makeEarthMapSvg(capture.rotation))}")`;
-        let pieces=scrambleEarthMap();
-        const draw=focusIndex=>{
-          grid.replaceChildren();
-          pieces.forEach((piece,position)=>{
-            const tile=document.createElement("button");tile.type="button";tile.className="earth-image-piece";tile.setAttribute("aria-label",piece===8?"Empty square":`Map piece ${piece+1}; slide into the empty square`);tile.disabled=piece===8;tile.dataset.position=String(position);
-            if(piece!==8){tile.style.backgroundImage=image;tile.style.backgroundPosition=`${(piece%3)*50}% ${Math.floor(piece/3)*50}%`;}
-            tile.addEventListener("click",()=>{
-              const blank=pieces.indexOf(8),row=Math.floor(position/3),column=position%3,blankRow=Math.floor(blank/3),blankColumn=blank%3;
-              if(Math.abs(row-blankRow)+Math.abs(column-blankColumn)!==1)return;
-              [pieces[position],pieces[blank]]=[pieces[blank],pieces[position]];
-              if(pieces.every((value,cell)=>value===cell)){
-                article.classList.add("is-complete");restored.add(capture.heading);state.textContent=`RESTORED · CAMERA ${capture.heading}°`;grid.setAttribute("aria-label",`Campus map frame ${String.fromCharCode(65+index)} reconstructed`);
-                const choose=document.createElement("button");choose.type="button";choose.className="earth-capture-select";choose.textContent=`SELECT ${capture.heading}° CAPTURE`;
-                choose.addEventListener("click",()=>{activePuzzleState.earthHeading=capture.heading;cards.querySelectorAll(".earth-capture").forEach(node=>node.classList.remove("selected"));article.classList.add("selected");$("#earth-capture-readout").textContent=`MAPS RESTORED · 4 / 4 · CAPTURE SELECTED · ${capture.heading}°`;});
-                article.append(choose);$("#earth-capture-readout").textContent=`MAPS RESTORED · ${restored.size} / 4 · ${restored.size===4?"COMPARE THE LANDMARKS AND SELECT A HEADING":"FINISH THE OTHER MAPS"}`;
-              }
-              draw(blank);
-            });
-            grid.append(tile);
-          });
-          if(focusIndex!==undefined&&!article.classList.contains("is-complete"))grid.querySelector(`[data-position="${focusIndex}"]`)?.focus();
-        };
-        draw();article.append(title,grid);cards.append(article);
-      });
-      setActionMode("ALIGN THE MIRROR ↗");$("#puzzle-action").onclick=()=>activePuzzleState.earthHeading===p.answer&&restored.size===4?solvePuzzle(p.answer):feedback(restored.size<4?"REBUILD ALL FOUR CAMPUS MAPS FIRST.":"THE LAKE AND ROAD DO NOT MATCH THE REFLECTION.",true);
+      box.innerHTML='<p class="artifact-copy">The reflected view shows Lake Behnke beside the north-south campus road. Compare the four recovered map captures, then choose the camera heading that matches the mirror.</p><div class="earth-captures" id="earth-captures"></div><div class="link-row"><a href="https://earth.google.com/web/@28.0587,-82.41385,850a,2500d,35y,0h,0t,0r" target="_blank" rel="noreferrer">OPEN THIS USF CAMPUS VIEW IN GOOGLE EARTH ↗</a></div><p class="small-note">Capture references use the real campus map. Google Earth imagery and dates can vary by region.</p><div class="artifact-readout" id="earth-capture-readout">NO CAPTURE SELECTED</div>';
+      const captures=[{heading:"000",title:"NORTH UP",layout:"north"},{heading:"090",title:"EAST UP",layout:"east"},{heading:"180",title:"SOUTH UP",layout:"south"},{heading:"270",title:"WEST UP",layout:"west"}];
+      const cards=$("#earth-captures");captures.forEach(capture=>{const button=document.createElement("button");button.type="button";button.className=`earth-capture earth-${capture.layout}`;button.dataset.heading=capture.heading;button.innerHTML=`<span class="earth-map" aria-hidden="true"><i class="earth-lake"></i><i class="earth-road"></i><i class="earth-building b1"></i><i class="earth-building b2"></i><i class="earth-building b3"></i><i class="earth-green"></i></span><b>${capture.title}</b><small>CAMERA HEADING · ${capture.heading}°</small>`;button.addEventListener("click",()=>{activePuzzleState.earthHeading=capture.heading;cards.querySelectorAll("button").forEach(node=>node.classList.toggle("selected",node===button));$("#earth-capture-readout").textContent=`CAPTURE SELECTED · ${capture.heading}°`;});cards.append(button);});
+      setActionMode("ALIGN THE MIRROR ↗");$("#puzzle-action").onclick=()=>activePuzzleState.earthHeading===p.answer?solvePuzzle(p.answer):feedback("THE LAKE AND ROAD DO NOT MATCH THE REFLECTION.",true);
     } else if(p.type==="morse") {
       box.innerHTML='<p class="artifact-copy">A lamp repeats a four-letter signal. Short flashes are dots; long flashes are dashes. Separate letters by the longer pauses. No speech is present in this recording.</p><div class="morse-lamp" aria-label="Morse pattern: dot dash dash, dot, dot dot dot, dash"><i class="dot"></i><i class="dash"></i><i class="dash"></i><b>/</b><i class="dot"></i><b>/</b><i class="dot"></i><i class="dot"></i><i class="dot"></i><b>/</b><i class="dash"></i></div><div class="morse-note">SHORT · LONG · LETTER GAP</div>';
       setAnswerMode("DECODED DIRECTION");
@@ -217,9 +171,23 @@
       const grid=$("#metadata-photo-grid");
       const drawRecords=()=>{grid.replaceChildren();records.forEach((record,index)=>{const card=document.createElement("article");card.className="metadata-photo";card.innerHTML=`<img src="assets/${record.asset}" alt="Recovered archival photograph ${record.id}"><div class="metadata-photo-head"><b>FRAME ${record.id}</b><span>${String(index+1).padStart(2,"0")}</span></div><details><summary>READ IMAGE METADATA</summary><dl><dt>DateTimeOriginal</dt><dd>${record.time}</dd><dt>ImageDescription</dt><dd>${record.note}</dd><dt>GPSStatus</dt><dd>INTERPOLATED</dd><dt>Artist</dt><dd>FIELD ARCHIVE / NPTA</dd></dl></details><div class="metadata-order-controls"></div>`;const controls=card.querySelector(".metadata-order-controls");for(const [delta,label] of [[-1,"↑"],[1,"↓"]]){const move=document.createElement("button");move.type="button";move.textContent=label;move.disabled=index+delta<0||index+delta>=records.length;move.setAttribute("aria-label",delta<0?"Move frame earlier":"Move frame later");move.addEventListener("click",()=>{[records[index],records[index+delta]]=[records[index+delta],records[index]];activePuzzleState.photoWord="";$("#metadata-order-readout").textContent="TIMELINE CHANGED · RECHECK THE ORDER";drawRecords();});controls.append(move);}grid.append(card);});};
       drawRecords();setActionMode("RECONSTRUCT THE TIMELINE ↗");setAnswerMode("RECOVERED WORD");$("#puzzle-action").onclick=()=>{const sorted=[...records].sort((a,b)=>a.time.localeCompare(b.time));if(records.some((record,index)=>record.id!==sorted[index].id)){feedback("THE METADATA TIMES ARE NOT IN ASCENDING ORDER.",true);return;}const word=records.map(record=>record.note.slice(-1)).join("").toUpperCase();activePuzzleState.photoWord=word;$("#metadata-order-readout").textContent=`TIMELINE RESTORED · ${word}`;feedback("TIMELINE RESTORED · ENTER THE SIX LETTER MESSAGE.");$("#puzzle-answer").focus();};
-    } else if(p.type==="earth") {
-      box.innerHTML='<p class="artifact-copy">The recovered image is tagged at the coordinate below. Verify the location in Google Earth, then reconstruct the camera\'s absolute capture time from its metadata. The archive accepted only UTC.</p><div class="coordinate-card">28.0587031° N<br>82.4138539° W</div><div class="link-row"><a href="https://earth.google.com/web/search/28.0587031,-82.4138539" target="_blank" rel="noreferrer">VERIFY THE PIN IN GOOGLE EARTH ↗</a></div><div class="utc-record"><span>DATETIMEORIGINAL</span><b>1998:12:24 22:41:12</b><span>CAMERA CLOCK · UTC−05:00</span><small>Convert the instant, including the date rollover. Submit UTC as YYYYMMDDHHMMSS.</small></div><p class="small-note">This is an online research puzzle. No campus visit is needed.</p>';
-      setAnswerMode("UTC TIMESTAMP · 14 DIGITS");
+    } else if(p.type==="photo-time") {
+      box.innerHTML='<p class="artifact-copy">The damaged exposure record leaves only the photograph and its clock face. The archive logger used a 12-hour clock. Estimate the time as closely as you can.</p><div class="time-photo" role="img" aria-label="Recovered photograph showing a clock at two o’clock"><img src="assets/photo-04.svg" alt="A dim winter hallway with a clock showing two o’clock"><div class="photo-clock">2:00</div></div><label class="control-label" for="photo-time-guess">ESTIMATED CAPTURE TIME</label><input id="photo-time-guess" class="time-guess" type="time" step="60" aria-describedby="photo-time-note"><small id="photo-time-note" class="small-note">Enter either 2:00 AM or 2:00 PM. Estimates within three minutes are accepted.</small>';
+      setActionMode("SUBMIT ESTIMATE ↗");
+      $("#puzzle-action").onclick=()=>{const value=$("#photo-time-guess").value;if(!value){feedback("ENTER A TIME ESTIMATE FIRST.",true);return;}const [hour,minute]=value.split(":").map(Number),guess=hour*60+minute;const within=[120,840].some(target=>{const difference=Math.abs(guess-target);return Math.min(difference,1440-difference)<=3;});if(!within){activePuzzleState.timeAccepted=false;feedback("THAT ESTIMATE IS OUTSIDE THE ARCHIVE WINDOW.",true);return;}activePuzzleState.timeAccepted=true;solvePuzzle(p.answer);};
+    } else if(p.type==="photo-wall") {
+      box.innerHTML='<p class="artifact-copy">The wall photograph has been cut into nine fragments. Select two pieces to swap them until the scene is whole.</p><div class="wall-photo-board" id="wall-photo-board" aria-label="Nine-piece photograph assembly"></div><div class="artifact-readout" id="wall-photo-readout">THE IMAGE IS SCRAMBLED</div>';
+      const tiles=$("#wall-photo-board"),order=[8,2,5,1,7,3,0,6,4];let selected=-1;
+      const draw=()=>{tiles.replaceChildren();order.forEach((piece,slot)=>{const button=document.createElement("button");button.type="button";button.className="wall-photo-tile"+(slot===selected?" selected":"");button.setAttribute("aria-label",`Photo fragment in square ${slot+1}`);button.style.backgroundImage='url("assets/photo-05.svg")';button.style.backgroundPosition=`${piece%3*50}% ${Math.floor(piece/3)*50}%`;button.addEventListener("click",()=>{if(selected<0){selected=slot;draw();return;}if(selected===slot){selected=-1;draw();return;}[order[selected],order[slot]]=[order[slot],order[selected]];selected=-1;draw();});tiles.append(button);});const complete=order.every((piece,index)=>piece===index);$("#wall-photo-readout").textContent=complete?"WALL PHOTOGRAPH RESTORED · THE GATE IS CLEAR":"THE IMAGE IS SCRAMBLED";activePuzzleState.photoRestored=complete;};draw();
+      setActionMode("SET THE IMAGE ↗");$("#puzzle-action").onclick=()=>activePuzzleState.photoRestored?solvePuzzle(p.answer):feedback("THE PHOTOGRAPH IS STILL OUT OF ORDER.",true);
+    } else if(p.type==="uu-mirror") {
+      box.innerHTML='<p class="artifact-copy">A strip behind the mirror uses classic uuencode. Decode the data block, then enter the recovered word for the final lock.</p><pre class="uu-record">begin 644 mirror.txt\n&24Y3241%\n`\nend</pre><p class="small-note">The header gives the file name and permissions. The line beginning with <code>&amp;</code> contains the encoded data.</p>';
+      setAnswerMode("DECODED WORD");
+    } else if(p.type==="gate-lock") {
+      box.innerHTML='<p class="artifact-copy">Turn the six tumblers to spell the word recovered from behind the mirror.</p><div class="gate-tumblers" id="gate-tumblers" aria-label="Six-letter gate lock"></div><div class="artifact-readout" id="gate-lock-readout">______</div>';
+      const letters=Array(6).fill("A"),alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ",container=$("#gate-tumblers");
+      const draw=()=>{container.replaceChildren();letters.forEach((letter,index)=>{const dial=document.createElement("div");dial.className="gate-tumbler";dial.innerHTML=`<button type="button" aria-label="Turn tumbler ${index+1} backward">−</button><b>${letter}</b><button type="button" aria-label="Turn tumbler ${index+1} forward">+</button>`;const buttons=dial.querySelectorAll("button");buttons[0].addEventListener("click",()=>{letters[index]=alphabet[(alphabet.indexOf(letters[index])+25)%26];draw();});buttons[1].addEventListener("click",()=>{letters[index]=alphabet[(alphabet.indexOf(letters[index])+1)%26];draw();});container.append(dial);});const word=letters.join("");activePuzzleState.gateWord=word;$("#gate-lock-readout").textContent=word;};draw();
+      setActionMode("RELEASE THE GATE ↗");$("#puzzle-action").onclick=()=>activePuzzleState.gateWord===p.answer?solvePuzzle(p.answer):feedback("THE TUMBLERS ARE NOT ALIGNED.",true);
     } else if(p.type==="shadow") {
       box.innerHTML='<p class="artifact-copy">Rotate the inspection lamp. Align the moving shadow with the engraved line; the aligned relief exposes a four-digit record.</p><div class="shadow-lab"><div class="shadow-mark"></div><div class="shadow-bar" id="shadow-bar"></div></div><label class="control-label" for="shadow-angle">LAMP BEARING <output id="shadow-angle-readout">0°</output></label><input class="range-control" id="shadow-angle" type="range" min="0" max="180" step="15" value="0"><div class="artifact-readout" id="shadow-readout">SHADOW OFF AXIS</div>';
       const slider=$("#shadow-angle");slider.addEventListener("input",()=>{const a=Number(slider.value),aligned=a===90;$("#shadow-bar").style.transform=`rotate(${a}deg)`;$("#shadow-angle-readout").textContent=`${a}°`;$("#shadow-readout").textContent=aligned?"ETCHING EXPOSED: 1218":"SHADOW OFF AXIS";});setActionMode("TAKE THE READING ↗");$("#puzzle-action").onclick=()=>Number(slider.value)===90?solvePuzzle(p.answer):feedback("THE SHADOW MISSES THE ENGRAVING.",true);
@@ -234,10 +202,13 @@
   function normalized(value) { return String(value).toUpperCase().replace(/[^A-Z0-9]/g,""); }
   function feedback(message,error=false) { const el=$("#puzzle-feedback");el.textContent=message;el.classList.toggle("error",error); }
   function solvePuzzle(value) {
-    const puzzle=puzzles[currentPuzzle]; if(!puzzle||currentPuzzle!==currentIndex()||!progress.registerActivated||normalized(value)!==normalized(puzzle.answer)){feedback("THE MECHANISM DOES NOT ACCEPT THAT READING.",true);return;}
+    const puzzle=puzzles[currentPuzzle];
+    const accepted=puzzle?.type==="photo-time"?activePuzzleState.timeAccepted===true:normalized(value)===normalized(puzzle?.answer||"");
+    if(!puzzle||currentPuzzle!==currentIndex()||!progress.registerActivated||!accepted){feedback("THE MECHANISM DOES NOT ACCEPT THAT READING.",true);return;}
     if(puzzle.type==="metadata-photos"&&activePuzzleState.photoWord!==puzzle.answer){feedback("RESTORE THE PHOTO TIMELINE BEFORE RECORDING THE MESSAGE.",true);return;}
     if(puzzle.type==="earth-mirror"&&activePuzzleState.earthHeading!==puzzle.answer){feedback("MATCH A CAMPUS CAPTURE TO THE REFLECTION FIRST.",true);return;}
-    if(puzzle.type==="route"&&activePuzzleState.route!==puzzle.answer){feedback("COMPLETE THE ROUTE PANEL BEFORE RECORDING IT.",true);return;}
+    if(puzzle.type==="photo-wall"&&activePuzzleState.photoRestored!==true){feedback("RESTORE THE WALL PHOTOGRAPH FIRST.",true);return;}
+    if(puzzle.type==="gate-lock"&&activePuzzleState.gateWord!==puzzle.answer){feedback("ALIGN THE FINAL TUMBLERS FIRST.",true);return;}
     if(puzzle.type==="cryptex"&&activePuzzleState.cryptexWord!==puzzle.answer){feedback("THE RINGS MUST BE TURNED INTO ALIGNMENT FIRST.",true);return;}
     if(puzzle.type==="morse"&&activePuzzleState.morseSent!==puzzle.answer){$("#morse-status").textContent="THE REGISTER REQUIRES A PHYSICAL KEY REPLY";return;}
     feedback(`RECORD ACCEPTED · FRAGMENT ${puzzle.fragment} RECOVERED`);
@@ -246,15 +217,62 @@
     if(currentPuzzle===2&&!hasItem("cryptex_key"))progress.inventory.push("cryptex_key");
     progress.finished=progress.solved.length===10;saveProgress();renderStage();
     puzzleDialog.classList.add("solving");$("#transition-cover").classList.add("sweep");
-    if(progress.finished)showToast("CONTINUITY RESTORED · PASSAGE OPEN");
+    if(progress.finished){showToast("CONTINUITY RESTORED · PASSAGE OPEN");sceneController?.setControlsLocked(true);}
     else showToast(`SEAL ${String(currentPuzzle+1).padStart(2,"0")} RELEASED`);
-    setTimeout(()=>{puzzleDialog.classList.remove("solving");if(puzzleDialog.open)puzzleDialog.close();morsePanel.hidden=true;sceneController?.setMorseActive(false);sceneController?.setCryptexVisible(false);$("#transition-cover").classList.remove("sweep");},850);
+    setTimeout(()=>{puzzleDialog.classList.remove("solving");if(puzzleDialog.open)puzzleDialog.close();morsePanel.hidden=true;sceneController?.setMorseActive(false);sceneController?.setCryptexVisible(false);$("#transition-cover").classList.remove("sweep");if(progress.finished)startEscapeCutscene();},850);
+  }
+  function solveForTesting() {
+    if(!testMode)return;
+    if(!progress.registerActivated&&currentIndex()===0){
+      progress.inventory=[...new Set([...progress.inventory,"flashlight","gate_tooth"])];
+      progress.solved=[0];progress.fragments[0]=puzzles[0].fragment;progress.registerActivated=true;
+      saveProgress();sceneController?.setCollectedItems(progress.inventory);sceneController?.setFlashlight(true);renderStage();
+      showToast("TEST MODE · SURVEY COMPLETE · OPEN PUZZLE 02");return;
+    }
+    const puzzle=puzzles[currentPuzzle];
+    if(!puzzle||currentPuzzle!==currentIndex()||(!puzzleDialog.open&&morsePanel.hidden)){
+      showToast("TEST MODE · OPEN THE CURRENT PUZZLE FIRST");return;
+    }
+    if(puzzle.type==="photo-time")activePuzzleState.timeAccepted=true;
+    if(puzzle.type==="metadata-photos")activePuzzleState.photoWord=puzzle.answer;
+    if(puzzle.type==="earth-mirror")activePuzzleState.earthHeading=puzzle.answer;
+    if(puzzle.type==="photo-wall")activePuzzleState.photoRestored=true;
+    if(puzzle.type==="gate-lock")activePuzzleState.gateWord=puzzle.answer;
+    if(puzzle.type==="cryptex"){
+      const target=puzzle.answer,current=cryptexViewer?.getCode()||"00000";
+      for(let i=0;i<target.length;i++){const steps=(Number(target[i])-Number(current[i])+10)%10;if(steps)cryptexViewer?.turn(i,steps);}
+      activePuzzleState.cryptexWord=target;
+    }
+    if(puzzle.type==="morse")activePuzzleState.morseSent=puzzle.answer;
+    solvePuzzle(puzzle.answer);
   }
   function submitAnswer(event) { event.preventDefault();if(currentPuzzle<0)return;solvePuzzle($("#puzzle-answer").value); }
-  function requestHint() {
-    const p=puzzles[currentPuzzle],n=Number(progress.hints[currentPuzzle])||0;if(!p||n>=p.hints.length)return;
-    feedback(`HINT ${n+1}: ${p.hints[n]}`);progress.hints[currentPuzzle]=n+1;saveProgress();
-    $("#hint-button").textContent=n+1>=p.hints.length?"HINTS EXHAUSTED":`REQUEST HINT ${n+2} / ${p.hints.length}`;$("#hint-button").disabled=n+1>=p.hints.length;
+  function startEscapeCutscene() {
+    const ending=$("#escape-cutscene"); if(!ending)return;
+    ending.hidden=false;ending.classList.remove("play");void ending.offsetWidth;ending.classList.add("play");
+    const caption=$("#ending-caption"),progressBar=$("#ending-progress");
+    progressBar.style.width="0%";
+    const snow=$("#escape-snow");snow.replaceChildren();for(let i=0;i<54;i++){const flake=document.createElement("i");flake.className="escape-flake";flake.style.left=`${(i*37)%100}%`;flake.style.animationDelay=`-${(i*13)%18}s`;flake.style.animationDuration=`${8+(i%9)}s`;flake.style.setProperty("--drift",`${((i*19)%120)-60}px`);snow.append(flake);}
+    const beats=[[0,"The lock releases. The door opens onto falling snow."],[6000,"You cross the threshold and leave the house behind."],[13000,"Cold air replaces the room’s stale warmth."],[20000,"Your footprints lead away from the gate."],[27000,"The winter road disappears into the trees."]];
+    beats.forEach(([at,message])=>setTimeout(()=>{caption.textContent=message;},at));
+    setTimeout(()=>{progressBar.style.width="100%";caption.textContent="You made it outside. The North Room is behind you.";},30000);
+  }
+  function initializeNotepad() {
+    const dialog=$("#notepad-dialog"),textarea=$("#notepad-text"),paper=$("#notepad-paper");if(!dialog||!textarea||!paper)return;
+    const textKey="np-gate-09-notes-v1",drawingKey="np-gate-09-sketch-v1",ctx=paper.getContext("2d");
+    try{textarea.value=localStorage.getItem(textKey)||"";const saved=localStorage.getItem(drawingKey);if(saved){const img=new Image();img.onload=()=>ctx.drawImage(img,0,0,paper.width,paper.height);img.src=saved;}}catch{}
+    textarea.addEventListener("input",()=>{try{localStorage.setItem(textKey,textarea.value);}catch{}});
+    $("#notepad-open").addEventListener("click",()=>{dialog.showModal();dialog.classList.remove("open");requestAnimationFrame(()=>dialog.classList.add("open"));});
+    $("#notepad-close").addEventListener("click",()=>dialog.close());dialog.addEventListener("click",event=>{if(event.target===dialog)dialog.close();});
+    const textMode=$("#note-text-mode"),drawMode=$("#note-draw-mode"),textPane=$("#note-text-pane"),drawPane=$("#note-draw-pane");
+    textMode.addEventListener("click",()=>{textPane.hidden=false;drawPane.hidden=true;textMode.setAttribute("aria-pressed","true");drawMode.setAttribute("aria-pressed","false");textarea.focus();});
+    drawMode.addEventListener("click",()=>{textPane.hidden=true;drawPane.hidden=false;textMode.setAttribute("aria-pressed","false");drawMode.setAttribute("aria-pressed","true");});
+    let drawing=false;const point=event=>{const rect=paper.getBoundingClientRect();return{x:(event.clientX-rect.left)*paper.width/rect.width,y:(event.clientY-rect.top)*paper.height/rect.height};};
+    paper.addEventListener("pointerdown",event=>{drawing=true;paper.setPointerCapture(event.pointerId);const p=point(event);ctx.beginPath();ctx.moveTo(p.x,p.y);});
+    paper.addEventListener("pointermove",event=>{if(!drawing)return;const p=point(event);ctx.lineWidth=7;ctx.lineCap="round";ctx.strokeStyle="#34251c";ctx.lineTo(p.x,p.y);ctx.stroke();});
+    const stopDrawing=()=>{if(!drawing)return;drawing=false;try{localStorage.setItem(drawingKey,paper.toDataURL("image/png"));}catch{}};
+    paper.addEventListener("pointerup",stopDrawing);paper.addEventListener("pointercancel",stopDrawing);
+    $("#note-clear").addEventListener("click",()=>{ctx.clearRect(0,0,paper.width,paper.height);try{localStorage.removeItem(drawingKey);}catch{}});
   }
   function closePuzzle() { if(puzzleDialog.open)puzzleDialog.close();sceneController?.setCryptexVisible(false);sceneController?.setPaused(false);cryptexViewer?.dispose();cryptexViewer=null;puzzleDialog.classList.remove("solving"); }
 
@@ -286,7 +304,11 @@
 
   $("#puzzle-form").addEventListener("submit",submitAnswer);
   $("#puzzle-action").addEventListener("click",()=>{});
-  $("#hint-button").addEventListener("click",requestHint);
+  if(testMode){const badge=$("#test-mode-badge");if(badge)badge.hidden=false;showToast("TEST MODE · OPEN A PUZZLE, THEN PRESS ⌘⌥⇧4");}
+  window.addEventListener("keydown",event=>{
+    if(!testMode||event.repeat||!event.metaKey||!event.altKey||!event.shiftKey||event.code!=="Digit4")return;
+    event.preventDefault();solveForTesting();
+  });
   $("#close-puzzle").addEventListener("click",closePuzzle);
   puzzleDialog.addEventListener("click",e=>{if(e.target===puzzleDialog)closePuzzle();});
   puzzleDialog.addEventListener("close",()=>{sceneController?.setCryptexVisible(false);sceneController?.setPaused(false);cryptexViewer?.dispose();cryptexViewer=null;});
@@ -300,6 +322,6 @@
   ["pointerdown","keydown","touchstart"].forEach(type=>window.addEventListener(type,primeMusic,{passive:type!=="keydown"}));
   window.addEventListener("resize",()=>sceneController?.resize());
   const musicPreference=localStorage.getItem(MUSIC_KEY);setMusic(musicPreference!=="off");
-  renderStage();initializeScene();
+  renderStage();initializeNotepad();initializeScene();
 })();
 
