@@ -133,6 +133,20 @@
   }
   function setAnswerMode(label="ENTER RECOVERED CODE") { $("#puzzle-form").hidden=false; $("#answer-label").textContent=label; }
   function setActionMode(label="CONFIRM ↗") { const b=$("#puzzle-action"); b.textContent=label; b.hidden=false; }
+  function makeEarthMapSvg(rotation) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 360">
+      <defs><linearGradient id="ground" x2=".2" y2="1"><stop stop-color="#59634d"/><stop offset="1" stop-color="#30392f"/></linearGradient><linearGradient id="lake" x2="1" y2="1"><stop stop-color="#496267"/><stop offset="1" stop-color="#20393d"/></linearGradient><linearGradient id="road" x2="0" y2="1"><stop stop-color="#bdb69d"/><stop offset=".5" stop-color="#ded4b9"/><stop offset="1" stop-color="#9f9880"/></linearGradient></defs>
+      <rect width="600" height="360" fill="url(#ground)"/><g transform="rotate(${rotation} 300 180)">
+        <path d="M40 335 560 25" stroke="#aaa58d" stroke-width="18" opacity=".7"/><path d="M40 335 560 25" stroke="#d1c8aa" stroke-width="8" opacity=".7"/><path d="M290 -40 324 -40 324 400 290 400Z" fill="url(#road)"/>
+        <ellipse cx="165" cy="173" rx="54" ry="126" fill="url(#lake)" stroke="#81918a" stroke-opacity=".4" stroke-width="8"/><path d="M78 260q62-52 122 5t-6 58q-75 12-116-8Z" fill="#627957" opacity=".9"/>
+        <path d="M393 78h112v52H393zM455 211h78v68h-78zM205 68h62v44h-62z" fill="#a9a995" stroke="#777b6e" stroke-width="5"/><path d="M356 156q45-28 89 0t4 46q-58 10-93-4Z" fill="#627957" opacity=".88"/><path d="M73 66h104v20H73zM490 304h76v18h-76z" fill="#8c927a" opacity=".7"/>
+      </g><rect x="3" y="3" width="594" height="354" fill="none" stroke="#dfd0ad" stroke-opacity=".35" stroke-width="6"/></svg>`;
+  }
+  function scrambleEarthMap() {
+    const pieces=Array.from({length:9},(_,i)=>i);let blank=8,previous=-1;
+    for(let turn=0;turn<42;turn++){const row=Math.floor(blank/3),column=blank%3;const options=[row>0?blank-3:-1,row<2?blank+3:-1,column>0?blank-1:-1,column<2?blank+1:-1].filter(i=>i>=0&&i!==previous);const next=options[Math.floor(Math.random()*options.length)];[pieces[blank],pieces[next]]=[pieces[next],pieces[blank]];previous=blank;blank=next;}
+    return pieces.every((piece,index)=>piece===index)?scrambleEarthMap():pieces;
+  }
   function renderPuzzleWidget(p) {
     const box=$("#puzzle-content"); box.replaceChildren();
     if(p.type==="photo-order") {
@@ -151,10 +165,42 @@
       const drawControls=()=>{controls.replaceChildren();letters.forEach((value,i)=>{const dial=document.createElement("div");dial.className="cryptex-dial";dial.innerHTML=`<button type="button" aria-label="Turn ring ${i+1} backward">−</button><small>${String(i+1).padStart(2,"0")} · ${alphabet[value]}</small><button type="button" aria-label="Turn ring ${i+1} forward">+</button>`;const buttons=dial.querySelectorAll("button");buttons[0].addEventListener("click",()=>cryptexViewer?.turn(i,-1));buttons[1].addEventListener("click",()=>cryptexViewer?.turn(i,1));controls.append(dial);});};
       sync();drawControls();$("#puzzle-action").hidden=true;$("#cryptex-confirm").addEventListener("click",()=>confirmCode(cryptexViewer?.getCode()??letters.map(x=>alphabet[x]).join("")));
     } else if(p.type==="earth-mirror") {
-      box.innerHTML='<p class="artifact-copy">The reflected view shows Lake Behnke beside the north-south campus road. Compare the four recovered map captures, then choose the camera heading that matches the mirror.</p><div class="earth-captures" id="earth-captures"></div><div class="link-row"><a href="https://earth.google.com/web/@28.0587,-82.41385,850a,2500d,35y,0h,0t,0r" target="_blank" rel="noreferrer">OPEN THIS USF CAMPUS VIEW IN GOOGLE EARTH ↗</a></div><p class="small-note">Capture references use the real campus map. Google Earth imagery and dates can vary by region.</p><div class="artifact-readout" id="earth-capture-readout">NO CAPTURE SELECTED</div>';
-      const captures=[{heading:"000",title:"NORTH UP",layout:"north"},{heading:"090",title:"EAST UP",layout:"east"},{heading:"180",title:"SOUTH UP",layout:"south"},{heading:"270",title:"WEST UP",layout:"west"}];
-      const cards=$("#earth-captures");captures.forEach(capture=>{const button=document.createElement("button");button.type="button";button.className=`earth-capture earth-${capture.layout}`;button.dataset.heading=capture.heading;button.innerHTML=`<span class="earth-map" aria-hidden="true"><i class="earth-lake"></i><i class="earth-road"></i><i class="earth-building b1"></i><i class="earth-building b2"></i><i class="earth-building b3"></i><i class="earth-green"></i></span><b>${capture.title}</b><small>CAMERA HEADING · ${capture.heading}°</small>`;button.addEventListener("click",()=>{activePuzzleState.earthHeading=capture.heading;cards.querySelectorAll("button").forEach(node=>node.classList.toggle("selected",node===button));$("#earth-capture-readout").textContent=`CAPTURE SELECTED · ${capture.heading}°`;});cards.append(button);});
-      setActionMode("ALIGN THE MIRROR ↗");$("#puzzle-action").onclick=()=>activePuzzleState.earthHeading===p.answer?solvePuzzle(p.answer):feedback("THE LAKE AND ROAD DO NOT MATCH THE REFLECTION.",true);
+      box.innerHTML='<p class="artifact-copy">Reconstruct each recovered campus capture by sliding the map pieces into the empty square. When all four views are whole, compare Lake Behnke and the straight road with the mirror, then select the matching camera heading.</p><p class="small-note">Click a piece beside the empty square to slide it. You can also use Tab and Enter. Every frame must be rebuilt before its heading is revealed.</p><div class="earth-captures" id="earth-captures"></div><div class="link-row"><a href="https://earth.google.com/web/@28.0587,-82.41385,850a,2500d,35y,0h,0t,0r" target="_blank" rel="noreferrer">OPEN THIS USF CAMPUS VIEW IN GOOGLE EARTH ↗</a></div><p class="small-note">These are original schematic captures based on the campus layout. Google Earth imagery and dates can vary by region.</p><div class="artifact-readout" id="earth-capture-readout" aria-live="polite">MAPS RESTORED · 0 / 4 · NO CAPTURE SELECTED</div>';
+      const captures=[{heading:"000",rotation:0},{heading:"090",rotation:90},{heading:"180",rotation:180},{heading:"270",rotation:270}];
+      for(let i=captures.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[captures[i],captures[j]]=[captures[j],captures[i]];}
+      const cards=$("#earth-captures"),restored=new Set();
+      captures.forEach((capture,index)=>{
+        const article=document.createElement("article");article.className="earth-capture";
+        const title=document.createElement("div");title.className="earth-capture-head";
+        const frame=document.createElement("b");frame.textContent=`FIELD FRAME · ${String.fromCharCode(65+index)}`;
+        const state=document.createElement("small");state.textContent="SCRAMBLED";title.append(frame,state);
+        const grid=document.createElement("div");grid.className="earth-image-board";grid.setAttribute("role","group");grid.setAttribute("aria-label",`Scrambled campus map frame ${String.fromCharCode(65+index)}`);
+        const image=`url("data:image/svg+xml,${encodeURIComponent(makeEarthMapSvg(capture.rotation))}")`;
+        let pieces=scrambleEarthMap();
+        const draw=focusIndex=>{
+          grid.replaceChildren();
+          pieces.forEach((piece,position)=>{
+            const tile=document.createElement("button");tile.type="button";tile.className="earth-image-piece";tile.setAttribute("aria-label",piece===8?"Empty square":`Map piece ${piece+1}; slide into the empty square`);tile.disabled=piece===8;tile.dataset.position=String(position);
+            if(piece!==8){tile.style.backgroundImage=image;tile.style.backgroundPosition=`${(piece%3)*50}% ${Math.floor(piece/3)*50}%`;}
+            tile.addEventListener("click",()=>{
+              const blank=pieces.indexOf(8),row=Math.floor(position/3),column=position%3,blankRow=Math.floor(blank/3),blankColumn=blank%3;
+              if(Math.abs(row-blankRow)+Math.abs(column-blankColumn)!==1)return;
+              [pieces[position],pieces[blank]]=[pieces[blank],pieces[position]];
+              if(pieces.every((value,cell)=>value===cell)){
+                article.classList.add("is-complete");restored.add(capture.heading);state.textContent=`RESTORED · CAMERA ${capture.heading}°`;grid.setAttribute("aria-label",`Campus map frame ${String.fromCharCode(65+index)} reconstructed`);
+                const choose=document.createElement("button");choose.type="button";choose.className="earth-capture-select";choose.textContent=`SELECT ${capture.heading}° CAPTURE`;
+                choose.addEventListener("click",()=>{activePuzzleState.earthHeading=capture.heading;cards.querySelectorAll(".earth-capture").forEach(node=>node.classList.remove("selected"));article.classList.add("selected");$("#earth-capture-readout").textContent=`MAPS RESTORED · 4 / 4 · CAPTURE SELECTED · ${capture.heading}°`;});
+                article.append(choose);$("#earth-capture-readout").textContent=`MAPS RESTORED · ${restored.size} / 4 · ${restored.size===4?"COMPARE THE LANDMARKS AND SELECT A HEADING":"FINISH THE OTHER MAPS"}`;
+              }
+              draw(blank);
+            });
+            grid.append(tile);
+          });
+          if(focusIndex!==undefined&&!article.classList.contains("is-complete"))grid.querySelector(`[data-position="${focusIndex}"]`)?.focus();
+        };
+        draw();article.append(title,grid);cards.append(article);
+      });
+      setActionMode("ALIGN THE MIRROR ↗");$("#puzzle-action").onclick=()=>activePuzzleState.earthHeading===p.answer&&restored.size===4?solvePuzzle(p.answer):feedback(restored.size<4?"REBUILD ALL FOUR CAMPUS MAPS FIRST.":"THE LAKE AND ROAD DO NOT MATCH THE REFLECTION.",true);
     } else if(p.type==="morse") {
       box.innerHTML='<p class="artifact-copy">A lamp repeats a four-letter signal. Short flashes are dots; long flashes are dashes. Separate letters by the longer pauses. No speech is present in this recording.</p><div class="morse-lamp" aria-label="Morse pattern: dot dash dash, dot, dot dot dot, dash"><i class="dot"></i><i class="dash"></i><i class="dash"></i><b>/</b><i class="dot"></i><b>/</b><i class="dot"></i><i class="dot"></i><i class="dot"></i><b>/</b><i class="dash"></i></div><div class="morse-note">SHORT · LONG · LETTER GAP</div>';
       setAnswerMode("DECODED DIRECTION");
