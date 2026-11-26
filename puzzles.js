@@ -15,8 +15,8 @@ window.NP_PUZZLES = [
     answer: "31210", type: "cryptex"
   },
   {
-    name: "The Blind Side", label: "EARTH IMAGE / 04", objective: "Compare the mirror's reflected campus view with the recovered Google Earth captures. Find the frame that matches the reflected landmarks, then read its camera bearing.", artifact: "MIRROR PLATE", fragment: "G",
-    hints: ["The reflection shows a straight north-south road beside a long, narrow lake.", "Match the lake and road arrangement in the Google Earth reference. The correct capture has the same view direction as the mirror.", "Choose the frame with Lake Behnke west of the north-south road; read the bearing in its metadata."],
+    name: "The Blind Side", label: "EARTH IMAGE / 04", objective: "Rebuild the four scrambled campus captures, then match the lake and road to the mirror.", artifact: "MIRROR PLATE", fragment: "G",
+    hints: ["Slide a tile next to the empty square into that space. Rebuild each of the four map frames.", "Once restored, compare Lake Behnke and the straight campus road with the mirror’s reflection.", "Lake Behnke appears west of the north-south road in the matching view. Select that frame’s revealed camera heading."],
     answer: "000", type: "earth-mirror"
   },
   {
