@@ -2,24 +2,26 @@
   const $ = (selector) => document.querySelector(selector);
   const canvas = $("#gate-scene"), puzzleDialog = $("#puzzle-dialog"), tapeDialog = $("#tape-dialog"), morsePanel = $("#morse-panel");
   const ruffleContainer = $("#ruffle-container");
-  const SAVE_KEY = "np-gate-09-progress-v10-image-evidence";
-  const LEGACY_SAVE_KEY = "np-gate-09-progress-v9-utc-morse-chair";
+  const SAVE_KEY = "np-gate-09-progress-v11-no-hints-ending";
+  const LEGACY_SAVE_KEY = "np-gate-09-progress-v10-image-evidence";
+  const OLDER_SAVE_KEY = "np-gate-09-progress-v9-utc-morse-chair";
   const puzzles = window.NP_PUZZLES;
   let progress = readProgress(), sceneController = null, currentPuzzle = -1, gamePlayer = null, createCryptexViewer = null, cryptexViewer = null;
   let activePuzzleState = {};
   const MUSIC_KEY = "np-gate-09-music-v1";
-  let hintIndex = 0, musicOn = false, musicContext = null, musicMaster = null, musicNodes = [];
+  let musicOn = false, musicContext = null, musicMaster = null, musicNodes = [];
 
   function readProgress() {
     try {
       const hasCurrentSave = Boolean(localStorage.getItem(SAVE_KEY));
-      const data = JSON.parse(localStorage.getItem(SAVE_KEY) || localStorage.getItem(LEGACY_SAVE_KEY) || "{}");
-      const solved = Array.isArray(data.solved) ? [...new Set(data.solved.filter(n => Number.isInteger(n) && n >= 0 && n < 10 && (hasCurrentSave || n < 3)))].sort((a,b) => a-b) : [];
+      const hasV10Save = Boolean(localStorage.getItem(LEGACY_SAVE_KEY));
+      const data = JSON.parse(localStorage.getItem(SAVE_KEY) || localStorage.getItem(LEGACY_SAVE_KEY) || localStorage.getItem(OLDER_SAVE_KEY) || "{}");
+      const progressLimit = hasCurrentSave ? 10 : hasV10Save ? 7 : 3;
+      const solved = Array.isArray(data.solved) ? [...new Set(data.solved.filter(n => Number.isInteger(n) && n >= 0 && n < progressLimit))].sort((a,b) => a-b) : [];
       // Enforce a contiguous route. A later saved seal can never skip an earlier one.
       const ordered = []; for (let i = 0; i < solved.length && solved[i] === i; i++) ordered.push(i);
-      const hints = data.hints && typeof data.hints === "object" ? Object.fromEntries(Object.entries(data.hints).filter(([key]) => hasCurrentSave || Number(key) < 3)) : {};
-      return { solved: ordered, inventory: Array.isArray(data.inventory) ? [...new Set(data.inventory.filter(x => ["flashlight","gate_tooth","cryptex_key"].includes(x)))] : [], hints, fragments: Array.isArray(data.fragments) ? data.fragments.slice(0,hasCurrentSave?10:3) : [], registerActivated: Boolean(data.registerActivated && ordered.includes(0)), finished: ordered.length === 10 };
-    } catch { return { solved: [], inventory: [], hints: {}, fragments: [], registerActivated: false, finished: false }; }
+      return { solved: ordered, inventory: Array.isArray(data.inventory) ? [...new Set(data.inventory.filter(x => ["flashlight","gate_tooth","cryptex_key"].includes(x)))] : [], fragments: Array.isArray(data.fragments) ? data.fragments.slice(0,progressLimit) : [], registerActivated: Boolean(data.registerActivated && ordered.includes(0)), finished: ordered.length === 10, endingSeen: Boolean(data.endingSeen) };
+    } catch { return { solved: [], inventory: [], fragments: [], registerActivated: false, finished: false, endingSeen: false }; }
   }
   function saveProgress() { localStorage.setItem(SAVE_KEY, JSON.stringify(progress)); }
   function hasItem(id) { return progress.inventory.includes(id); }
@@ -32,7 +34,7 @@
     const index = currentIndex(), stage = puzzles[index];
     $("#stage-count").textContent = "ROOM 09-A / PRIVATE RESIDENCE";
     $("#stage-title").textContent = progress.finished ? "The House Is Still" : "The North Room";
-    $("#stage-objective").textContent = progress.finished ? "The room settles. The record is complete." : !progress.registerActivated ? "The room is dark. A hand lamp rests on the writing table to your left." : stage?.type==="morse" ? "The chair faces an unanswered transmission at the writing desk." : stage?.type==="earth" ? "The Earth pin fixes the camera's location. Reconstruct its timestamp in UTC." : stage?.type==="earth-mirror" ? "Compare the mirror with the recovered Google Earth captures." : stage?.type==="metadata-photos" ? "Inspect the photographs and recover their hidden camera-note message." : "Dust has been disturbed somewhere in the room.";
+    $("#stage-objective").textContent = progress.finished ? "The room settles. The record is complete." : !progress.registerActivated ? "The room is dark. A hand lamp rests on the writing table to your left." : stage?.type==="morse" ? "The chair faces an unanswered transmission at the writing desk." : stage?.type==="time-window" ? "A camera clock needs to be set from the last photograph." : stage?.type==="photo-wall" ? "One picture frame on the wall has been disturbed." : stage?.type==="mirror-code" ? "The old mirror is beginning to lift from the wall." : stage?.type==="uuencode" ? "A final transmission waits in the evidence record." : stage?.type==="earth-mirror" ? "Compare the mirror with the recovered Google Earth captures." : stage?.type==="metadata-photos" ? "Inspect the photographs and recover their hidden camera-note message." : "Dust has been disturbed somewhere in the room.";
     $("#gate-state").textContent = progress.finished ? "RECORD CLOSED" : progress.registerActivated ? "ROOM OCCUPIED" : "POWER LOST";
     const progressBar = $("#stage-progress"); progressBar.replaceChildren();
     for (let i=0;i<10;i++) { const dot=document.createElement("i"); dot.className = i < progress.solved.length ? "complete" : i === index && !progress.finished ? "current" : ""; progressBar.append(dot); }
@@ -55,13 +57,13 @@
   function onSceneFocusItem(id) {
     const prompt=$("#scene-prompt"); if(!prompt)return;
     if(!id){prompt.classList.remove("visible");return;}
-    const text={flashlight:"HAND LAMP · CLICK TO RECOVER",gate_tooth:"BRASS KEY · CLICK / E TO TAKE",chair:sceneController?.isSeated()?"OPERATOR'S CHAIR · C TO STAND":"OPERATOR'S CHAIR · CLICK / E TO SIT",cryptex_key:"KEY RECOVERED",artifact:"EVIDENCE FOUND · CLICK TO INSPECT"};
+    const text={flashlight:"HAND LAMP · CLICK TO RECOVER",gate_tooth:"SMALL BRASS KEY · PRESS E TO TAKE",rug_corner:"RUG EDGE · LAMP + CROUCH · PRESS E TO LIFT",chair:sceneController?.isSeated()?"OPERATOR'S CHAIR · C TO STAND":"OPERATOR'S CHAIR · CLICK / E TO SIT",cryptex_key:"KEY RECOVERED",artifact:"EVIDENCE FOUND · CLICK TO INSPECT"};
     prompt.textContent=text[id]||"EVIDENCE FOUND · CLICK TO INSPECT"; prompt.classList.add("visible");
   }
   function onSceneItemFound(id) {
     if(!["flashlight","gate_tooth","cryptex_key"].includes(id)||hasItem(id))return;
     progress.inventory.push(id);
-    if(id==="flashlight") { sceneController?.setFlashlight(true); saveProgress(); renderInventory(); showToast("HAND LAMP RECOVERED · A BRASS KEY CATCHES THE LIGHT"); return; }
+    if(id==="flashlight") { sceneController?.setFlashlight(true); saveProgress(); renderInventory(); showToast("HAND LAMP RECOVERED · SEARCH THE RUG'S EDGE"); return; }
     if(id==="gate_tooth" && hasItem("flashlight")) {
       progress.registerActivated=true; progress.solved=[0]; progress.fragments[0]=puzzles[0].fragment; saveProgress(); renderStage();
       showToast("BRASS KEY RECOVERED · THE FIRST SEAL RELEASES"); return;
@@ -105,7 +107,7 @@
   }
   async function initializeScene() {
     try {
-    const sceneModule=await import("./scene3d.room.js?v=16");
+      const sceneModule=await import("./scene3d.room.js?v=18");
       const {createGateScene}=sceneModule; createCryptexViewer=sceneModule.createCryptexViewer;
       sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem,receiveMorsePulse,()=>{if(!morsePanel.hidden){morsePanel.hidden=true;resetMorseInput();}});
       sceneController.setRegisterActive(progress.registerActivated);
@@ -114,19 +116,19 @@
       sceneController.setCollectedItems(progress.inventory);
       sceneController.setCryptexLetters(["0","0","0","0","0"]);
       renderStage();
+      if(progress.finished)startEnding();
     } catch(error) { showToast("THE GATE SCENE COULD NOT LOAD · RELOAD THE ARCHIVE"); console.error("3D gate scene failed",error); }
   }
 
   function openPuzzle(index) {
     if(index!==currentIndex() || index===0 || !progress.registerActivated)return;
     if(puzzles[index]?.type==="morse"){if(!sceneController?.isSeated()){showToast("THE RECEIVER IS SET FOR THE OPERATOR'S CHAIR");return;}openMorseStation(index);return;}
-    const puzzle=puzzles[index]; currentPuzzle=index; activePuzzleState={}; hintIndex=Number(progress.hints[index])||0;
+    const puzzle=puzzles[index]; currentPuzzle=index; activePuzzleState={};
     $("#puzzle-kicker").textContent=`EVIDENCE / ${String(index+1).padStart(2,"0")} · ${puzzle.label}`;
     $("#puzzle-title").textContent=puzzle.name; $("#puzzle-intro").textContent=puzzle.objective;
     $("#puzzle-feedback").textContent=""; $("#puzzle-feedback").classList.remove("error");
     $("#puzzle-answer").value=""; $("#puzzle-form").hidden=true; $("#puzzle-action").hidden=true;
-    $("#hint-button").textContent=hintIndex>=puzzle.hints.length?"HINTS EXHAUSTED":`REQUEST HINT ${hintIndex+1} / ${puzzle.hints.length}`;
-    $("#hint-button").disabled=hintIndex>=puzzle.hints.length;
+    const answerInput=$("#puzzle-answer");answerInput.type=puzzle.type==="time-window"?"time":"text";answerInput.step=puzzle.type==="time-window"?"60":"any";answerInput.placeholder=puzzle.type==="time-window"?"02:00 AM":"ENTER CODE";
     renderPuzzleWidget(puzzle);
     if(puzzle.type==="cryptex")sceneController?.setCryptexVisible(true);
     puzzleDialog.showModal(); sceneController?.setPaused(true);if(puzzle.type==="cryptex")requestAnimationFrame(()=>cryptexViewer?.resize());
@@ -141,6 +143,16 @@
         <ellipse cx="165" cy="173" rx="54" ry="126" fill="url(#lake)" stroke="#81918a" stroke-opacity=".4" stroke-width="8"/><path d="M78 260q62-52 122 5t-6 58q-75 12-116-8Z" fill="#627957" opacity=".9"/>
         <path d="M393 78h112v52H393zM455 211h78v68h-78zM205 68h62v44h-62z" fill="#a9a995" stroke="#777b6e" stroke-width="5"/><path d="M356 156q45-28 89 0t4 46q-58 10-93-4Z" fill="#627957" opacity=".88"/><path d="M73 66h104v20H73zM490 304h76v18h-76z" fill="#8c927a" opacity=".7"/>
       </g><rect x="3" y="3" width="594" height="354" fill="none" stroke="#dfd0ad" stroke-opacity=".35" stroke-width="6"/></svg>`;
+  }
+  function makeWallPortraitSvg() {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 360">
+      <defs><linearGradient id="room" x2="0" y2="1"><stop stop-color="#50312b"/><stop offset="1" stop-color="#160e0d"/></linearGradient><linearGradient id="snow" x2="0" y2="1"><stop stop-color="#d8e2de"/><stop offset="1" stop-color="#738b8b"/></linearGradient></defs>
+      <rect width="600" height="360" fill="url(#room)"/><rect x="44" y="28" width="512" height="304" rx="5" fill="#291816" stroke="#b28b55" stroke-width="12"/><rect x="68" y="52" width="464" height="256" fill="#233940"/>
+      <rect x="82" y="66" width="436" height="205" fill="url(#snow)"/><circle cx="418" cy="111" r="25" fill="#f1ddae"/>
+      <path d="M82 226 169 136l58 63 91-101 103 123 97-71v121H82Z" fill="#243638"/><path d="m120 225 49-89 50 74 66-112 59 93 45-48 53 82Z" fill="#f0e9da"/>
+      <rect x="286" y="165" width="7" height="106" fill="#d4bb89"/><path d="m270 176 20-45 20 45Z" fill="#731e25"/><path d="m270 205 20-45 20 45Z" fill="#731e25"/><path d="m270 234 20-45 20 45Z" fill="#731e25"/>
+      <rect x="82" y="271" width="436" height="37" fill="#1a1110"/><text x="300" y="297" fill="#eddbb6" font-family="Georgia,serif" font-size="23" letter-spacing="7" text-anchor="middle">TURN THE MIRROR</text>
+      <path d="M54 40h492M54 320h492" stroke="#ead09a" stroke-opacity=".34" stroke-width="2"/></svg>`;
   }
   function scrambleEarthMap() {
     const pieces=Array.from({length:9},(_,i)=>i);let blank=8,previous=-1;
@@ -220,43 +232,68 @@
     } else if(p.type==="earth") {
       box.innerHTML='<p class="artifact-copy">The recovered image is tagged at the coordinate below. Verify the location in Google Earth, then reconstruct the camera\'s absolute capture time from its metadata. The archive accepted only UTC.</p><div class="coordinate-card">28.0587031° N<br>82.4138539° W</div><div class="link-row"><a href="https://earth.google.com/web/search/28.0587031,-82.4138539" target="_blank" rel="noreferrer">VERIFY THE PIN IN GOOGLE EARTH ↗</a></div><div class="utc-record"><span>DATETIMEORIGINAL</span><b>1998:12:24 22:41:12</b><span>CAMERA CLOCK · UTC−05:00</span><small>Convert the instant, including the date rollover. Submit UTC as YYYYMMDDHHMMSS.</small></div><p class="small-note">This is an online research puzzle. No campus visit is needed.</p>';
       setAnswerMode("UTC TIMESTAMP · 14 DIGITS");
-    } else if(p.type==="shadow") {
-      box.innerHTML='<p class="artifact-copy">Rotate the inspection lamp. Align the moving shadow with the engraved line; the aligned relief exposes a four-digit record.</p><div class="shadow-lab"><div class="shadow-mark"></div><div class="shadow-bar" id="shadow-bar"></div></div><label class="control-label" for="shadow-angle">LAMP BEARING <output id="shadow-angle-readout">0°</output></label><input class="range-control" id="shadow-angle" type="range" min="0" max="180" step="15" value="0"><div class="artifact-readout" id="shadow-readout">SHADOW OFF AXIS</div>';
-      const slider=$("#shadow-angle");slider.addEventListener("input",()=>{const a=Number(slider.value),aligned=a===90;$("#shadow-bar").style.transform=`rotate(${a}deg)`;$("#shadow-angle-readout").textContent=`${a}°`;$("#shadow-readout").textContent=aligned?"ETCHING EXPOSED: 1218":"SHADOW OFF AXIS";});setActionMode("TAKE THE READING ↗");$("#puzzle-action").onclick=()=>Number(slider.value)===90?solvePuzzle(p.answer):feedback("THE SHADOW MISSES THE ENGRAVING.",true);
-    } else if(p.type==="route") {
-      box.innerHTML='<p class="artifact-copy">Begin at A. Enter the four remaining stations once each, then return to A. E is the final stop. The log gives the order C before D before B before E; B cannot directly follow A.</p><div class="route-graph"><svg viewBox="0 0 420 180" role="img" aria-label="Five stations A through E with connections"><path d="M60 90 L160 35 L270 55 L360 110 L220 145 L60 90 M160 35 L220 145 M60 90 L270 55 M360 110 L160 35"/><g><circle cx="60" cy="90" r="17"/><text x="60" y="94">A</text><circle cx="160" cy="35" r="17"/><text x="160" y="39">B</text><circle cx="270" cy="55" r="17"/><text x="270" y="59">C</text><circle cx="360" cy="110" r="17"/><text x="360" y="114">D</text><circle cx="220" cy="145" r="17"/><text x="220" y="149">E</text></g></svg></div><div class="route-entry" id="route-entry"></div><div class="artifact-readout" id="route-readout">A → · → · → · → · → A</div>';
-      const entry=$("#route-entry");for(let i=0;i<4;i++){const select=document.createElement("select");select.setAttribute("aria-label",`Route station ${i+1} of 4`);select.innerHTML='<option value="">—</option>'+"BCDE".split("").map(c=>`<option>${c}</option>`).join("");select.addEventListener("change",()=>{$("#route-readout").textContent=`A → ${[...entry.querySelectorAll("select")].map(x=>x.value||"·").join(" → ")} → A`;});entry.append(select);}setActionMode("TRACE THE ROUTE ↗");$("#puzzle-action").onclick=()=>{const stops=[...entry.querySelectorAll("select")].map(x=>x.value),route="A"+stops.join("");if(stops.includes("")||new Set(stops).size!==4){feedback("ENTER EACH STATION ONCE BEFORE RETURNING TO A.",true);return;}activePuzzleState.route=route;route===p.answer?solvePuzzle(route):feedback("THE ROUTE BREAKS A SIGHTLINE OR ORDER RULE.",true);};
-    } else if(p.type==="final") {
-      box.innerHTML=`<p class="artifact-copy">Recovered fragments, in gate order:</p><div class="fragment-tray">${progress.fragments.slice(0,9).map((x,i)=>`<span class="fragment-chip found"><small>${String(i+1).padStart(2,"0")}</small>${x}</span>`).join("")}</div><div class="final-sentence">THE GATE IS <span>________</span></div><p class="artifact-copy">The map places the gate outside. The photographs place the camera inside.</p>`;
-      setAnswerMode("FINAL WORD");
+    } else if(p.type==="time-window") {
+      box.innerHTML='<p class="artifact-copy">The time stamp was partly burned away. The remaining mark shows the minute hand at twelve and the hour hand at two. Enter your estimate as a local camera time.</p><div class="camera-clock" role="img" aria-label="A camera clock stopped at two o’clock"><div class="clock-face"><i class="clock-hour"></i><i class="clock-minute"></i><b>2:00</b></div><span>PHOTO / FINAL EXPOSURE</span></div><p class="small-note">The archive accepts estimates from 1:57 AM through 2:03 AM.</p>';
+      setAnswerMode("ESTIMATED PHOTO TIME · ±3 MINUTES");
+    } else if(p.type==="photo-wall") {
+      const photo=`url("data:image/svg+xml,${encodeURIComponent(makeWallPortraitSvg())}")`;
+      box.innerHTML='<p class="artifact-copy">A winter portrait has been cut into nine pieces. Select one piece, then another to swap them. You can also drag pieces. Rebuild the photograph to read the frame.</p><div class="wall-photo-board" id="wall-photo-board" role="group" aria-label="Nine-piece wall photograph"></div><div class="wall-photo-reveal" id="wall-photo-reveal" hidden>TURN THE MIRROR</div>';
+      const board=$("#wall-photo-board");let pieces=[...Array(9).keys()];for(let i=pieces.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pieces[i],pieces[j]]=[pieces[j],pieces[i]];}if(pieces.every((v,i)=>v===i))[pieces[0],pieces[1]]=[pieces[1],pieces[0]];
+      let selected=-1,dragFrom=-1;
+      const draw=()=>{board.replaceChildren();pieces.forEach((piece,slot)=>{const tile=document.createElement("button");tile.type="button";tile.className="wall-photo-tile"+(selected===slot?" selected":"");tile.setAttribute("aria-label",`Photograph piece ${slot+1}, currently showing section ${piece+1}`);tile.style.backgroundImage=photo;tile.style.backgroundPosition=`${(piece%3)*50}% ${Math.floor(piece/3)*50}%`;tile.draggable=true;tile.addEventListener("click",()=>{if(selected<0){selected=slot;draw();return;}if(selected===slot){selected=-1;draw();return;}[pieces[selected],pieces[slot]]=[pieces[slot],pieces[selected]];selected=-1;draw();});tile.addEventListener("dragstart",()=>{dragFrom=slot;});tile.addEventListener("dragover",e=>e.preventDefault());tile.addEventListener("drop",e=>{e.preventDefault();if(dragFrom<0||dragFrom===slot)return;[pieces[dragFrom],pieces[slot]]=[pieces[slot],pieces[dragFrom]];dragFrom=-1;draw();});board.append(tile);});if(pieces.every((v,i)=>v===i)){activePuzzleState.wallRestored=true;$("#wall-photo-reveal").hidden=false;setAnswerMode("OBJECT NAMED IN THE FRAME");$("#puzzle-answer").focus();}};
+      draw();
+    } else if(p.type==="mirror-code") {
+      box.innerHTML='<p class="artifact-copy">The mirror is loose in its frame. Rotate it until the hidden side catches the lamp. The recovered strip is in classic UUencode format; keep it for the final record.</p><div class="mirror-reveal-stage"><div class="mirror-reveal-frame" id="mirror-reveal-frame"><span>GLASS</span></div><pre class="mirror-uu-code" id="mirror-uu-code" hidden>begin 644 north-pole.txt\n,5T%,2R!/5513241%\n \nend</pre></div><label class="control-label" for="mirror-turn">MIRROR TURN <output id="mirror-turn-readout">0°</output></label><input id="mirror-turn" class="range-control" type="range" min="0" max="180" step="5" value="0"><div class="artifact-readout" id="mirror-readout">BACKING UNREADABLE</div>';
+      const slider=$("#mirror-turn");slider.addEventListener("input",()=>{const a=Number(slider.value),revealed=a>=170;$("#mirror-turn-readout").textContent=`${a}°`;$("#mirror-reveal-frame").style.transform=`perspective(500px) rotateY(${a}deg)`;$("#mirror-uu-code").hidden=!revealed;$("#mirror-readout").textContent=revealed?"BACKING EXPOSED · UUENCODED RECORD FOUND":"BACKING UNREADABLE";activePuzzleState.mirrorRevealed=revealed;});
+      setActionMode("RECORD THE HIDDEN STRIP");$("#puzzle-action").onclick=()=>activePuzzleState.mirrorRevealed?solvePuzzle("REVEALED"):feedback("TURN THE GLASS FARTHER TO READ THE BACKING.",true);
+    } else if(p.type==="uuencode") {
+      box.innerHTML='<p class="artifact-copy">Decode this UUencoded file and enter the instruction from the decoded text. The line beginning with a comma contains the message.</p><pre class="final-uu-code">begin 644 north-pole.txt\n,5T%,2R!/5513241%\n \nend</pre><p class="small-note">Keep the spaces and punctuation in the decoded instruction.</p>';
+      setAnswerMode("DECODED INSTRUCTION");
     }
   }
   function normalized(value) { return String(value).toUpperCase().replace(/[^A-Z0-9]/g,""); }
   function feedback(message,error=false) { const el=$("#puzzle-feedback");el.textContent=message;el.classList.toggle("error",error); }
   function solvePuzzle(value) {
+    if(progress.finished)return;
     const puzzle=puzzles[currentPuzzle]; if(!puzzle||currentPuzzle!==currentIndex()||!progress.registerActivated||normalized(value)!==normalized(puzzle.answer)){feedback("THE MECHANISM DOES NOT ACCEPT THAT READING.",true);return;}
     if(puzzle.type==="metadata-photos"&&activePuzzleState.photoWord!==puzzle.answer){feedback("RESTORE THE PHOTO TIMELINE BEFORE RECORDING THE MESSAGE.",true);return;}
     if(puzzle.type==="earth-mirror"&&activePuzzleState.earthHeading!==puzzle.answer){feedback("MATCH A CAMPUS CAPTURE TO THE REFLECTION FIRST.",true);return;}
-    if(puzzle.type==="route"&&activePuzzleState.route!==puzzle.answer){feedback("COMPLETE THE ROUTE PANEL BEFORE RECORDING IT.",true);return;}
+    if(puzzle.type==="photo-wall"&&!activePuzzleState.wallRestored){feedback("REBUILD THE WALL PHOTOGRAPH FIRST.",true);return;}
+    if(puzzle.type==="mirror-code"&&!activePuzzleState.mirrorRevealed){feedback("THE HIDDEN STRIP IS STILL COVERED BY THE GLASS.",true);return;}
     if(puzzle.type==="cryptex"&&activePuzzleState.cryptexWord!==puzzle.answer){feedback("THE RINGS MUST BE TURNED INTO ALIGNMENT FIRST.",true);return;}
     if(puzzle.type==="morse"&&activePuzzleState.morseSent!==puzzle.answer){$("#morse-status").textContent="THE REGISTER REQUIRES A PHYSICAL KEY REPLY";return;}
     feedback(`RECORD ACCEPTED · FRAGMENT ${puzzle.fragment} RECOVERED`);
     if(!progress.solved.includes(currentPuzzle))progress.solved.push(currentPuzzle);
     progress.fragments[currentPuzzle]=puzzle.fragment;
     if(currentPuzzle===2&&!hasItem("cryptex_key"))progress.inventory.push("cryptex_key");
-    progress.finished=progress.solved.length===10;saveProgress();renderStage();
+    progress.finished=progress.solved.length===10;saveProgress();renderStage();if(progress.finished)sceneController?.setPaused(true);
     puzzleDialog.classList.add("solving");$("#transition-cover").classList.add("sweep");
-    if(progress.finished)showToast("CONTINUITY RESTORED · PASSAGE OPEN");
+    if(progress.finished)showToast("CONTINUITY RESTORED · THE DOOR IS OPEN");
     else showToast(`SEAL ${String(currentPuzzle+1).padStart(2,"0")} RELEASED`);
-    setTimeout(()=>{puzzleDialog.classList.remove("solving");if(puzzleDialog.open)puzzleDialog.close();morsePanel.hidden=true;sceneController?.setMorseActive(false);sceneController?.setCryptexVisible(false);$("#transition-cover").classList.remove("sweep");},850);
+    const finalSolved=progress.finished;
+    setTimeout(()=>{puzzleDialog.classList.remove("solving");if(puzzleDialog.open)puzzleDialog.close();morsePanel.hidden=true;sceneController?.setMorseActive(false);sceneController?.setCryptexVisible(false);$("#transition-cover").classList.remove("sweep");if(finalSolved)startEnding();else sceneController?.setPaused(false);},850);
   }
-  function submitAnswer(event) { event.preventDefault();if(currentPuzzle<0)return;solvePuzzle($("#puzzle-answer").value); }
-  function requestHint() {
-    const p=puzzles[currentPuzzle],n=Number(progress.hints[currentPuzzle])||0;if(!p||n>=p.hints.length)return;
-    feedback(`HINT ${n+1}: ${p.hints[n]}`);progress.hints[currentPuzzle]=n+1;saveProgress();
-    $("#hint-button").textContent=n+1>=p.hints.length?"HINTS EXHAUSTED":`REQUEST HINT ${n+2} / ${p.hints.length}`;$("#hint-button").disabled=n+1>=p.hints.length;
+  function submitAnswer(event) {
+    event.preventDefault();if(currentPuzzle<0)return;
+    const puzzle=puzzles[currentPuzzle],value=$("#puzzle-answer").value;
+    if(puzzle?.type==="time-window"){
+      const match=/^(\d{2}):(\d{2})$/.exec(value);if(!match){feedback("SET A CAMERA TIME FIRST.",true);return;}
+      const minutes=Number(match[1])*60+Number(match[2]);if(Math.abs(minutes-120)>3){feedback("THE CAMERA CLOCK IS MORE THAN THREE MINUTES FROM THE EXPOSURE.",true);return;}
+      solvePuzzle("0200");return;
+    }
+    solvePuzzle(value);
   }
-  function closePuzzle() { if(puzzleDialog.open)puzzleDialog.close();sceneController?.setCryptexVisible(false);sceneController?.setPaused(false);cryptexViewer?.dispose();cryptexViewer=null;puzzleDialog.classList.remove("solving"); }
+  function startEnding(){
+    const overlay=$("#ending-cutscene"),caption=$("#ending-caption"),bar=$("#ending-progress-bar"),final=$("#ending-final");overlay.hidden=false;final.hidden=true;caption.hidden=false;bar.style.width="0%";
+    const captions=[[.22,"THE LOCK GIVES WAY"],[.4,"YOU STEP THROUGH THE DOOR"],[.52,"COLD AIR FILLS THE ROOM"],[.85,"SNOW GATHERS UNDERFOOT"],[1,"THE HOUSE DISAPPEARS BEHIND YOU"]];let lastCaption="";
+    if(progress.endingSeen){caption.hidden=true;final.hidden=false;sceneController?.playEnding(0,()=>{});return;}
+    sceneController?.playEnding(30000,ratio=>{
+      const amount=Math.max(0,Math.min(1,ratio));bar.style.width=`${amount*100}%`;
+      const next=captions.find(([,text],index)=>amount<(captions[index+1]?.[0]??1.01));if(next&&next[1]!==lastCaption){caption.textContent=next[1];lastCaption=next[1];}
+      if(amount>=1){caption.hidden=true;final.hidden=false;progress.endingSeen=true;saveProgress();}
+    });
+  }
+  function closePuzzle() { if(puzzleDialog.open)puzzleDialog.close();sceneController?.setCryptexVisible(false);sceneController?.setPaused(Boolean(progress.finished));cryptexViewer?.dispose();cryptexViewer=null;puzzleDialog.classList.remove("solving"); }
 
   function openTape() {
     if(!progress.solved.includes(2))return;tapeDialog.showModal();loadRuffle();
@@ -284,13 +321,27 @@
   function setMusic(enabled) { musicOn=Boolean(enabled);localStorage.setItem(MUSIC_KEY,musicOn?"on":"off");$("#music-toggle").textContent=musicOn?"MUSIC ON":"MUSIC OFF";$("#music-toggle").setAttribute("aria-pressed",String(musicOn));if(musicOn)startMusic();if(musicMaster&&musicContext)musicMaster.gain.setTargetAtTime(musicOn ? .18 : 0,musicContext.currentTime,.8); }
   function primeMusic() { if(musicOn)startMusic(); }
 
+  const NOTES_TEXT_KEY="np-gate-09-field-notes-v1",NOTES_DRAW_KEY="np-gate-09-field-drawing-v1",notepadDialog=$("#notepad-dialog"),notesText=$("#notes-text"),notesCanvas=$("#notes-canvas");let noteSaveTimer=0,drawingActive=false,eraseNotes=false;
+  function openNotepad(){notesText.value=localStorage.getItem(NOTES_TEXT_KEY)||"";notepadDialog.showModal();sceneController?.setPaused(true);requestAnimationFrame(sizeNotesCanvas);}
+  function closeNotepad(){if(notepadDialog.open)notepadDialog.close();sceneController?.setPaused(Boolean(progress.finished));}
+  function queueNoteSave(){const status=$("#notes-save-status");status.textContent="SAVING…";clearTimeout(noteSaveTimer);noteSaveTimer=setTimeout(()=>{localStorage.setItem(NOTES_TEXT_KEY,notesText.value);status.textContent="SAVED IN THIS BROWSER";},220);}
+  function sizeNotesCanvas(){const rect=notesCanvas.getBoundingClientRect();if(!rect.width||!rect.height)return;const imageData=localStorage.getItem(NOTES_DRAW_KEY),ratio=Math.min(window.devicePixelRatio||1,2);notesCanvas.width=Math.round(rect.width*ratio);notesCanvas.height=Math.round(rect.height*ratio);const ctx=notesCanvas.getContext("2d");ctx.setTransform(ratio,0,0,ratio,0,0);ctx.fillStyle="#fffdf8";ctx.fillRect(0,0,rect.width,rect.height);if(imageData){const image=new Image();image.onload=()=>ctx.drawImage(image,0,0,rect.width,rect.height);image.src=imageData;}}
+  function notePoint(event){const rect=notesCanvas.getBoundingClientRect();return{x:event.clientX-rect.left,y:event.clientY-rect.top};}
+  function startNoteStroke(event){if($("#notes-drawing").hidden)return;event.preventDefault();drawingActive=true;notesCanvas.setPointerCapture(event.pointerId);const p=notePoint(event),ctx=notesCanvas.getContext("2d");ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+.1,p.y+.1);ctx.strokeStyle=eraseNotes?"#fffdf8":$("#notes-color").value;ctx.lineWidth=Number($("#notes-width").value)*(eraseNotes?4:1);ctx.lineCap="round";ctx.stroke();}
+  function moveNoteStroke(event){if(!drawingActive)return;const p=notePoint(event),ctx=notesCanvas.getContext("2d");ctx.strokeStyle=eraseNotes?"#fffdf8":$("#notes-color").value;ctx.lineWidth=Number($("#notes-width").value)*(eraseNotes?4:1);ctx.lineCap="round";ctx.lineTo(p.x,p.y);ctx.stroke();}
+  function endNoteStroke(){if(!drawingActive)return;drawingActive=false;localStorage.setItem(NOTES_DRAW_KEY,notesCanvas.toDataURL("image/png"));$("#notes-save-status").textContent="SAVED IN THIS BROWSER";}
+  function showNotesMode(mode){const draw=mode==="draw";$("#notes-write-tab").setAttribute("aria-pressed",String(!draw));$("#notes-draw-tab").setAttribute("aria-pressed",String(draw));notesText.hidden=draw;$("#notes-drawing").hidden=!draw;if(draw)requestAnimationFrame(sizeNotesCanvas);eraseNotes=false;$("#notes-erase").setAttribute("aria-pressed","false");}
+  function clearNotes(){if(!window.confirm("Clear the saved notes and drawing from this browser?"))return;notesText.value="";localStorage.removeItem(NOTES_TEXT_KEY);localStorage.removeItem(NOTES_DRAW_KEY);sizeNotesCanvas();$("#notes-save-status").textContent="PAGE CLEARED";}
+
   $("#puzzle-form").addEventListener("submit",submitAnswer);
   $("#puzzle-action").addEventListener("click",()=>{});
-  $("#hint-button").addEventListener("click",requestHint);
   $("#close-puzzle").addEventListener("click",closePuzzle);
   puzzleDialog.addEventListener("click",e=>{if(e.target===puzzleDialog)closePuzzle();});
-  puzzleDialog.addEventListener("close",()=>{sceneController?.setCryptexVisible(false);sceneController?.setPaused(false);cryptexViewer?.dispose();cryptexViewer=null;});
+  puzzleDialog.addEventListener("close",()=>{sceneController?.setCryptexVisible(false);sceneController?.setPaused(Boolean(progress.finished));cryptexViewer?.dispose();cryptexViewer=null;});
   $("#music-toggle").addEventListener("click",()=>setMusic(!musicOn));
+  $("#notes-toggle").addEventListener("click",openNotepad);$("#close-notepad").addEventListener("click",closeNotepad);notepadDialog.addEventListener("click",e=>{if(e.target===notepadDialog)closeNotepad();});
+  notesText.value=localStorage.getItem(NOTES_TEXT_KEY)||"";notesText.addEventListener("input",queueNoteSave);$("#notes-write-tab").addEventListener("click",()=>showNotesMode("write"));$("#notes-draw-tab").addEventListener("click",()=>showNotesMode("draw"));$("#notes-clear").addEventListener("click",clearNotes);$("#notes-erase").addEventListener("click",()=>{eraseNotes=!eraseNotes;$("#notes-erase").setAttribute("aria-pressed",String(eraseNotes));});
+  notesCanvas.addEventListener("pointerdown",startNoteStroke);notesCanvas.addEventListener("pointermove",moveNoteStroke);notesCanvas.addEventListener("pointerup",endNoteStroke);notesCanvas.addEventListener("pointercancel",endNoteStroke);window.addEventListener("resize",()=>{if(notepadDialog.open&&!$("#notes-drawing").hidden)sizeNotesCanvas();});
   $("#close-tape").addEventListener("click",()=>tapeDialog.close());
   const crouchButton=$("#crouch-toggle");
   crouchButton?.addEventListener("click",()=>{if(sceneController?.isSeated()){sceneController.toggleSeat();return;}const next=crouchButton.getAttribute("aria-pressed")!=="true";const actual=sceneController?.setCrouching(next);crouchButton.setAttribute("aria-pressed",String(actual??next));crouchButton.textContent=(actual??next)?"STAND":"CROUCH";});

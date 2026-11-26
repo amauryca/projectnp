@@ -9,10 +9,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.room.css?v=9">
+  <link rel="stylesheet" href="styles.room.css?v=11">
   <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
-  <script defer src="puzzles.js?v=11"></script>
-  <script defer src="main.room.js?v=18"></script>
+  <script defer src="puzzles.js?v=13"></script>
+  <script defer src="main.room.js?v=20"></script>
 </head>
 <body class="immersive">
   <main class="world manor-room" id="world" aria-label="The North Room">
@@ -22,7 +22,7 @@
 
     <header class="world-header">
       <div class="world-brand"><span class="brand-mark">N</span><span><b>NORTH POLE TRANSIT AUTHORITY</b><small>RECOVERED ENVIRONMENT / 09-A</small></span></div>
-      <div class="world-status"><span class="live-dot"></span><span id="gate-state">SURVEY REQUIRED</span><button id="music-toggle" class="music-toggle" type="button" aria-label="Toggle instrumental music" aria-pressed="false">MUSIC OFF</button></div>
+      <div class="world-status"><span class="live-dot"></span><span id="gate-state">SURVEY REQUIRED</span><button id="notes-toggle" class="music-toggle" type="button" aria-haspopup="dialog">FIELD NOTES</button><button id="music-toggle" class="music-toggle" type="button" aria-label="Toggle instrumental music" aria-pressed="false">MUSIC OFF</button></div>
     </header>
 
     <section class="stage-hud" aria-live="polite">
@@ -66,7 +66,16 @@
       <form id="puzzle-form" class="puzzle-form"><label for="puzzle-answer" id="answer-label">ENTER RECOVERED CODE</label><div class="answer-row"><input id="puzzle-answer" autocomplete="off" spellcheck="false" maxlength="80" placeholder="ENTER CODE" required><button class="submit-button" type="submit">ENGAGE SEAL ↗</button></div></form>
       <div id="puzzle-feedback" class="puzzle-feedback" aria-live="polite"></div>
       <button id="puzzle-action" class="submit-button action-button" type="button" hidden>CONFIRM ↗</button>
-      <button id="hint-button" class="hint-button" type="button">REQUEST HINT</button>
+    </article>
+  </dialog>
+
+  <dialog id="notepad-dialog" class="notepad-dialog" aria-labelledby="notepad-title">
+    <article class="notepad-card">
+      <header class="notepad-header"><div><span class="eyebrow">FIELD RECORD / PRIVATE TO THIS BROWSER</span><h2 id="notepad-title">Field Notes</h2></div><button id="close-notepad" class="icon-button" type="button" aria-label="Close field notes">×</button></header>
+      <nav class="notepad-tabs" aria-label="Choose note mode"><button type="button" id="notes-write-tab" aria-pressed="true">WRITE</button><button type="button" id="notes-draw-tab" aria-pressed="false">DRAW</button><button type="button" id="notes-clear">CLEAR PAGE</button></nav>
+      <textarea id="notes-text" class="notes-text" maxlength="5000" placeholder="Record times, symbols, and anything that feels out of place…" aria-label="Your notes"></textarea>
+      <div class="notes-drawing" id="notes-drawing" hidden><canvas id="notes-canvas" aria-label="Drawing pad"></canvas><div class="notes-drawing-controls"><label>INK <input id="notes-color" type="color" value="#8f272b"></label><label>WIDTH <input id="notes-width" type="range" min="1" max="18" value="4"></label><button type="button" id="notes-erase">ERASER</button></div></div>
+      <p class="notes-save-status" id="notes-save-status" aria-live="polite">SAVED IN THIS BROWSER</p>
     </article>
   </dialog>
 
@@ -78,6 +87,11 @@
   </dialog>
 
   <div id="transition-cover" aria-hidden="true"></div>
+  <section id="ending-cutscene" class="ending-cutscene" aria-live="polite" aria-label="Escape cutscene" hidden>
+    <div class="ending-caption" id="ending-caption">THE LOCK GIVES WAY</div>
+    <div class="ending-progress" aria-hidden="true"><i id="ending-progress-bar"></i></div>
+    <div class="ending-final" id="ending-final" hidden>THE ARCHIVE IS CLOSED</div>
+  </section>
   <footer class="page-footer immersive-footer"><span>FICTIONAL INTERACTIVE EXPERIENCE · NO CAMPUS VISIT REQUIRED</span><span>BUILD 10.02 / SOUND CONTAINS NO SPEECH</span></footer>
 </body>
 </html>
