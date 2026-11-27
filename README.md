@@ -27,6 +27,8 @@ Then open `http://localhost:8000`.
 
 The soundtrack is instrumental and contains no speech. Music begins after a browser interaction and can be toggled in the HUD. No campus visit is required. Stage 04 links to a public Google Earth view of the USF Tampa campus; the in-game camera-heading plates are original diagrams, not Google imagery. Field notes support typing and drawing and stay in the current browser. The ending stops controls for the player who completes the game; it does not pause other visitors or shut down the shared website.
 
+For testing, hold **C + M + E** together to skip the current stage. Skipping the opening stage also grants the lamp and brass key needed to continue.
+
 ## The recovered SWF
 
 `assets/christmas-cat-17945-lore.swf` is the provided game with a Survey 00 lore record embedded as a `DefineBinaryData` tag. To rebuild it from the original asset:

@@ -70,6 +70,17 @@
     }
     saveProgress(); renderInventory(); showToast("OBJECT RECOVERED");
   }
+  function skipCurrentStage() {
+    if(progress.finished)return;
+    const index=currentIndex(),stage=puzzles[index];if(!stage)return;
+    if(index===0){progress.inventory=[...new Set([...progress.inventory,"flashlight","gate_tooth"])];progress.solved=[0];progress.fragments[0]=stage.fragment;progress.registerActivated=true;}
+    else{if(!progress.registerActivated)return;if(!progress.solved.includes(index))progress.solved.push(index);progress.fragments[index]=stage.fragment;}
+    if(index===2&&!hasItem("cryptex_key"))progress.inventory.push("cryptex_key");
+    progress.finished=progress.solved.length===puzzles.length;saveProgress();currentPuzzle=-1;activePuzzleState={};morsePanel.hidden=true;sceneController?.setMorseActive(false);
+    if(puzzleDialog.open)puzzleDialog.close();sceneController?.setFlashlight(hasItem("flashlight"));sceneController?.setCollectedItems(progress.inventory);renderStage();
+    showToast(`SHORTCUT USED · LEVEL ${String(index+1).padStart(2,"0")} SKIPPED`);
+    if(progress.finished){sceneController?.setPaused(true);startEnding();}
+  }
   function onSceneSelect(index) {
     // The only inspectable evidence is on the next unopened gate.
     if(!progress.registerActivated || progress.finished || index!==currentIndex())return;
@@ -107,9 +118,9 @@
   }
   async function initializeScene() {
     try {
-      const sceneModule=await import("./scene3d.room.js?v=18");
+      const sceneModule=await import("./scene3d.room.js?v=19");
       const {createGateScene}=sceneModule; createCryptexViewer=sceneModule.createCryptexViewer;
-      sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem,receiveMorsePulse,()=>{if(!morsePanel.hidden){morsePanel.hidden=true;resetMorseInput();}});
+      sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem,receiveMorsePulse,()=>{if(!morsePanel.hidden){morsePanel.hidden=true;resetMorseInput();}},skipCurrentStage);
       sceneController.setRegisterActive(progress.registerActivated);
       sceneController.setSolvedCount(progress.solved.length,progress.finished);
       sceneController.setFlashlight(hasItem("flashlight"));
