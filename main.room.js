@@ -118,7 +118,7 @@
   }
   async function initializeScene() {
     try {
-      const sceneModule=await import("./scene3d.room.js?v=22");
+      const sceneModule=await import("./scene3d.room.js?v=23");
       const {createGateScene}=sceneModule; createCryptexViewer=sceneModule.createCryptexViewer;
       sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem,receiveMorsePulse,()=>{if(!morsePanel.hidden){morsePanel.hidden=true;resetMorseInput();}},skipCurrentStage);
       sceneController.setRegisterActive(progress.registerActivated);
