@@ -1,5 +1,31 @@
 (() => {
   const $ = (selector) => document.querySelector(selector);
+  function drawEndingFilm(canvas, ratio, elapsed) {
+    const dpr=Math.min(window.devicePixelRatio||1,1.6),w=Math.max(1,canvas.clientWidth),h=Math.max(1,canvas.clientHeight);
+    if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);}
+    const c=canvas.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,w,h);
+    const t=elapsed/1000,doorOpen=Math.max(0,Math.min(1,(ratio-.08)/.18)),walk=Math.max(0,Math.min(1,(ratio-.2)/.6)),mist=Math.max(0,Math.min(1,(ratio-.76)/.2));
+    const sky=c.createLinearGradient(0,0,0,h);sky.addColorStop(0,"#101820");sky.addColorStop(.52,"#3d4a4c");sky.addColorStop(1,"#b5bbb2");c.fillStyle=sky;c.fillRect(0,0,w,h);
+    const glow=c.createRadialGradient(w*.24,h*.64,1,w*.24,h*.64,w*.46);glow.addColorStop(0,`rgba(255,174,94,${.68*(1-doorOpen*.45)})`);glow.addColorStop(1,"rgba(255,160,90,0)");c.fillStyle=glow;c.fillRect(0,0,w,h);
+    // Distant ridges keep the horizon readable while the snow field opens up.
+    c.fillStyle="#253235";c.beginPath();c.moveTo(0,h*.62);for(let x=0;x<=w;x+=w/8)c.lineTo(x,h*(.52+Math.sin(x*.012)*.025));c.lineTo(w,h);c.lineTo(0,h);c.fill();
+    c.fillStyle="#667678";c.beginPath();c.moveTo(0,h*.68);for(let x=0;x<=w;x+=w/7)c.lineTo(x,h*(.60+Math.sin(x*.009+1.8)*.03));c.lineTo(w,h);c.lineTo(0,h);c.fill();
+    const snow=c.createLinearGradient(0,h*.64,0,h);snow.addColorStop(0,"#d2d4ca");snow.addColorStop(.45,"#eef0e8");snow.addColorStop(1,"#b9c3bf");c.fillStyle=snow;c.beginPath();c.moveTo(0,h*.69);c.quadraticCurveTo(w*.48,h*.61,w,h*.7);c.lineTo(w,h);c.lineTo(0,h);c.fill();
+    // A narrow trail pulls the eye from the open door toward the tree line.
+    c.fillStyle="rgba(130,145,144,.38)";c.beginPath();c.moveTo(w*.45,h*.7);c.lineTo(w*.53,h*.7);c.lineTo(w*.78,h);c.lineTo(w*.18,h);c.closePath();c.fill();
+    const drawPine=(x,y,size,alpha=1)=>{c.save();c.globalAlpha=alpha;c.fillStyle="#152224";c.fillRect(x-size*.045,y-size*.18,size*.09,size*.28);for(let i=0;i<3;i++){const yy=y-size*(.13+i*.23),ww=size*(.72-i*.14);c.beginPath();c.moveTo(x,yy-size*.56);c.lineTo(x-ww/2,yy+size*.1);c.lineTo(x+ww/2,yy+size*.1);c.closePath();c.fill();c.fillStyle="#b8c4c0";c.beginPath();c.moveTo(x,yy-size*.53);c.lineTo(x-ww*.36,yy-size*.11);c.quadraticCurveTo(x,yy-size*.16,x+ww*.36,yy-size*.11);c.closePath();c.fill();c.fillStyle="#152224";}c.restore();};
+    for(let i=0;i<13;i++){const x=(i/12)*w+Math.sin(t*.08+i)*w*.008,size=h*(.20+(i%4)*.07);drawPine(x,h*(.67+(i%3)*.018),size,.78);}
+    // The cabin stays as a warm memory on the left edge of the frame.
+    const hx=w*.13,hy=h*.43,hw=w*.28,hh=h*.3;c.fillStyle="#211b1a";c.fillRect(hx,hy,hw,hh);c.fillStyle="#332522";c.beginPath();c.moveTo(hx-w*.025,hy+h*.015);c.lineTo(hx+hw*.5,hy-h*.17);c.lineTo(hx+hw+w*.025,hy+h*.015);c.closePath();c.fill();c.fillStyle="#5d3826";c.fillRect(hx+hw*.12,hy+hh*.26,hw*.2,hh*.25);c.fillRect(hx+hw*.67,hy+hh*.26,hw*.2,hh*.25);
+    c.fillStyle="#f7bb6e";c.fillRect(hx+hw*.17,hy+hh*.3,hw*.1,hh*.13);c.fillRect(hx+hw*.72,hy+hh*.3,hw*.1,hh*.13);
+    const doorX=hx+hw*.42,doorY=hy+hh*.22,doorW=hw*.2,doorH=hh*.78;c.fillStyle=`rgba(255,190,116,${.55+doorOpen*.4})`;c.fillRect(doorX-doorW*.45,doorY,doorW*.9,doorH);c.fillStyle="#181817";c.save();c.translate(doorX,doorY);c.transform(1,0,-doorOpen*.42,1,0,0);c.fillRect(0,0,doorW,doorH);c.restore();
+    // A bundled silhouette walks away, then thins into the snow haze.
+    if(ratio>.16&&ratio<.94){const k=Math.min(1,walk);const x=w*(.51-.25*k),y=h*(.69+.34*k),scale=.16+.48*k;const fade=(1-mist)*Math.min(1,(ratio-.16)/.08);c.save();c.globalAlpha=fade;c.fillStyle="#202b2c";c.beginPath();c.ellipse(x,y-scale*.92,scale*.17,scale*.22,0,0,Math.PI*2);c.fill();c.beginPath();c.moveTo(x-scale*.15,y-scale*.73);c.quadraticCurveTo(x-scale*.27,y-scale*.4,x-scale*.2,y-scale*.18);c.lineTo(x+scale*.2,y-scale*.18);c.quadraticCurveTo(x+scale*.25,y-scale*.5,x+scale*.14,y-scale*.73);c.closePath();c.fill();c.strokeStyle="#7c2928";c.lineWidth=Math.max(2,scale*.06);c.beginPath();c.moveTo(x-scale*.13,y-scale*.64);c.quadraticCurveTo(x+Math.sin(t*2)*scale*.12,y-scale*.5,x+scale*.19,y-scale*.47);c.stroke();const stride=Math.sin(t*7)*scale*.08;c.strokeStyle="#202b2c";c.lineWidth=Math.max(3,scale*.08);c.beginPath();c.moveTo(x-scale*.08,y-scale*.2);c.lineTo(x-scale*.13+stride,y);c.moveTo(x+scale*.08,y-scale*.2);c.lineTo(x+scale*.13-stride,y);c.stroke();c.restore();}
+    // Snow drifts continuously; the tiny deterministic pattern avoids layout flicker.
+    c.fillStyle="#f5f6f0";for(let i=0;i<90;i++){const seed=(i*7919)%997/997,x=(seed*w+Math.sin(t*.4+i)*19+w)%w,y=((i*131+elapsed*(.018+(i%5)*.004))%(h+30))-10,r=.7+(i%4)*.42;c.globalAlpha=.22+(i%6)*.08;c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fill();}c.globalAlpha=1;
+    const vignette=c.createRadialGradient(w*.5,h*.48,h*.13,w*.5,h*.48,h*.78);vignette.addColorStop(.45,"rgba(3,8,10,0)");vignette.addColorStop(1,"rgba(3,8,10,.63)");c.fillStyle=vignette;c.fillRect(0,0,w,h);
+    if(ratio>.86){c.globalAlpha=Math.min(1,(ratio-.86)/.1);c.fillStyle="#f2ead8";c.textAlign="center";c.font=`${Math.max(14,Math.min(22,w*.022))}px Georgia`;c.fillText("THE NORTH KEEPS ITS SILENCE",w*.5,h*.82);c.globalAlpha=1;}
+  }
   const canvas = $("#gate-scene"), puzzleDialog = $("#puzzle-dialog"), tapeDialog = $("#tape-dialog"), morsePanel = $("#morse-panel");
   const ruffleContainer = $("#ruffle-container");
   const SAVE_KEY = "np-gate-09-progress-v11-no-hints-ending";
@@ -118,7 +144,7 @@
   }
   async function initializeScene() {
     try {
-      const sceneModule=await import("./scene3d.room.js?v=25");
+      const sceneModule=await import("./scene3d.room.js?v=26");
       const {createGateScene}=sceneModule; createCryptexViewer=sceneModule.createCryptexViewer;
       sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem,receiveMorsePulse,()=>{if(!morsePanel.hidden){morsePanel.hidden=true;resetMorseInput();}},skipCurrentStage);
       sceneController.setRegisterActive(progress.registerActivated);
@@ -296,13 +322,21 @@
   }
   function startEnding(){
     $("#gate-scene").focus();
-    const overlay=$("#ending-cutscene"),caption=$("#ending-caption"),bar=$("#ending-progress-bar"),final=$("#ending-final");overlay.hidden=false;final.hidden=true;caption.hidden=false;caption.textContent="THE EXIT STANDS OPEN · WALK INTO THE WINTER AIR";bar.style.width="0%";
-    if(progress.endingSeen){caption.hidden=true;final.hidden=false;sceneController?.playEnding(0,()=>{});return;}
-    sceneController?.playEnding(30000,(ratio,escaped)=>{
-      const amount=Math.max(0,Math.min(1,ratio));bar.style.width=`${amount*100}%`;
-      if(escaped){caption.hidden=true;final.hidden=false;progress.endingSeen=true;saveProgress();}
-      else if(amount>=1){caption.textContent="THE HOUSE IS BEHIND YOU · KEEP WALKING THROUGH THE SNOW";caption.hidden=false;}
-    });
+    const overlay=$("#ending-cutscene"),film=$("#ending-film"),caption=$("#ending-caption"),bar=$("#ending-progress-bar"),final=$("#ending-final");
+    overlay.hidden=false;final.hidden=true;caption.hidden=false;bar.style.width="0%";film.style.opacity="0";
+    const position=sceneController?.getPlayerPosition?.()||{x:0,z:0};
+    const distance=Math.hypot(position.x,position.z+6.35),fadeDuration=Math.round(850+Math.min(1850,distance*115));
+    film.style.setProperty("--film-fade",`${fadeDuration}ms`);
+    sceneController?.playEnding(30000);sceneController?.setPaused(true);
+    if(progress.endingSeen){caption.hidden=true;final.hidden=false;drawEndingFilm(film,1,30000);requestAnimationFrame(()=>film.style.opacity="1");return;}
+    const started=performance.now();
+    const frame=now=>{
+      const elapsed=now-started,amount=Math.max(0,Math.min(1,elapsed/30000));drawEndingFilm(film,amount,elapsed);bar.style.width=`${amount*100}%`;
+      caption.textContent=amount<.14?"THE LAST EMBER GOES QUIET":amount<.32?"THE DOOR OPENS ON A WHITE SKY":amount<.78?"FOOTPRINTS DISAPPEAR IN THE SNOW":"WINTER KEEPS THE REST";
+      if(amount>=1){caption.hidden=true;final.hidden=false;progress.endingSeen=true;saveProgress();return;}
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(()=>{film.style.opacity="1";requestAnimationFrame(frame);});
   }
   function closePuzzle() { if(puzzleDialog.open)puzzleDialog.close();sceneController?.setCryptexVisible(false);sceneController?.setPaused(Boolean(progress.finished));cryptexViewer?.dispose();cryptexViewer=null;puzzleDialog.classList.remove("solving"); }
 
