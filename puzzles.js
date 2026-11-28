@@ -25,7 +25,7 @@ window.NP_PUZZLES = [
   },
   {
     name: "The Last Exposure", label: "CAMERA CLOCK / 07", objective: "A place without a sunrise keeps the hour in its shadows. The old globe remembers the exposure.", artifact: "CAMERA CLOCK", fragment: "E",
-    answer: "0200", type: "time-window"
+    answer: "1400", type: "time-window"
   },
   {
     name: "The Torn Portrait", label: "WALL PHOTOGRAPH / 08", objective: "A winter scene has come apart at the seams. What remains visible when the pieces remember their places?", artifact: "RESTORED PRINT", fragment: "I",
@@ -36,7 +36,7 @@ window.NP_PUZZLES = [
     answer: "KEY", type: "mirror-code"
   },
   {
-    name: "The Winter Record", label: "WINTER RECORD / 10", objective: "The painted trees hide a message from the room’s first winter.", artifact: "FINAL TRANSMISSION", fragment: "INSIDE",
-    answer: "WALK OUTSIDE", type: "uuencode"
+    name: "The Winter Record", label: "WINTER RECORD / 10", objective: "The last record is layered. Its wrapper, alphabet, and instruction belong to different eras.", artifact: "FINAL TRANSMISSION", fragment: "INSIDE",
+    answer: "WALK OUTSIDE", type: "winter-decoder"
   }
 ];
