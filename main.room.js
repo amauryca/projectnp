@@ -4,27 +4,28 @@
     const dpr=Math.min(window.devicePixelRatio||1,1.6),w=Math.max(1,canvas.clientWidth),h=Math.max(1,canvas.clientHeight);
     if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);}
     const c=canvas.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,w,h);
-    const t=elapsed/1000,doorOpen=Math.max(0,Math.min(1,(ratio-.08)/.18)),walk=Math.max(0,Math.min(1,(ratio-.2)/.6)),mist=Math.max(0,Math.min(1,(ratio-.76)/.2));
-    const sky=c.createLinearGradient(0,0,0,h);sky.addColorStop(0,"#101820");sky.addColorStop(.52,"#3d4a4c");sky.addColorStop(1,"#b5bbb2");c.fillStyle=sky;c.fillRect(0,0,w,h);
-    const glow=c.createRadialGradient(w*.24,h*.64,1,w*.24,h*.64,w*.46);glow.addColorStop(0,`rgba(255,174,94,${.68*(1-doorOpen*.45)})`);glow.addColorStop(1,"rgba(255,160,90,0)");c.fillStyle=glow;c.fillRect(0,0,w,h);
-    // Distant ridges keep the horizon readable while the snow field opens up.
-    c.fillStyle="#253235";c.beginPath();c.moveTo(0,h*.62);for(let x=0;x<=w;x+=w/8)c.lineTo(x,h*(.52+Math.sin(x*.012)*.025));c.lineTo(w,h);c.lineTo(0,h);c.fill();
-    c.fillStyle="#667678";c.beginPath();c.moveTo(0,h*.68);for(let x=0;x<=w;x+=w/7)c.lineTo(x,h*(.60+Math.sin(x*.009+1.8)*.03));c.lineTo(w,h);c.lineTo(0,h);c.fill();
-    const snow=c.createLinearGradient(0,h*.64,0,h);snow.addColorStop(0,"#d2d4ca");snow.addColorStop(.45,"#eef0e8");snow.addColorStop(1,"#b9c3bf");c.fillStyle=snow;c.beginPath();c.moveTo(0,h*.69);c.quadraticCurveTo(w*.48,h*.61,w,h*.7);c.lineTo(w,h);c.lineTo(0,h);c.fill();
-    // A narrow trail pulls the eye from the open door toward the tree line.
-    c.fillStyle="rgba(130,145,144,.38)";c.beginPath();c.moveTo(w*.45,h*.7);c.lineTo(w*.53,h*.7);c.lineTo(w*.78,h);c.lineTo(w*.18,h);c.closePath();c.fill();
-    const drawPine=(x,y,size,alpha=1)=>{c.save();c.globalAlpha=alpha;c.fillStyle="#152224";c.fillRect(x-size*.045,y-size*.18,size*.09,size*.28);for(let i=0;i<3;i++){const yy=y-size*(.13+i*.23),ww=size*(.72-i*.14);c.beginPath();c.moveTo(x,yy-size*.56);c.lineTo(x-ww/2,yy+size*.1);c.lineTo(x+ww/2,yy+size*.1);c.closePath();c.fill();c.fillStyle="#b8c4c0";c.beginPath();c.moveTo(x,yy-size*.53);c.lineTo(x-ww*.36,yy-size*.11);c.quadraticCurveTo(x,yy-size*.16,x+ww*.36,yy-size*.11);c.closePath();c.fill();c.fillStyle="#152224";}c.restore();};
-    for(let i=0;i<13;i++){const x=(i/12)*w+Math.sin(t*.08+i)*w*.008,size=h*(.20+(i%4)*.07);drawPine(x,h*(.67+(i%3)*.018),size,.78);}
-    // The cabin stays as a warm memory on the left edge of the frame.
-    const hx=w*.13,hy=h*.43,hw=w*.28,hh=h*.3;c.fillStyle="#211b1a";c.fillRect(hx,hy,hw,hh);c.fillStyle="#332522";c.beginPath();c.moveTo(hx-w*.025,hy+h*.015);c.lineTo(hx+hw*.5,hy-h*.17);c.lineTo(hx+hw+w*.025,hy+h*.015);c.closePath();c.fill();c.fillStyle="#5d3826";c.fillRect(hx+hw*.12,hy+hh*.26,hw*.2,hh*.25);c.fillRect(hx+hw*.67,hy+hh*.26,hw*.2,hh*.25);
-    c.fillStyle="#f7bb6e";c.fillRect(hx+hw*.17,hy+hh*.3,hw*.1,hh*.13);c.fillRect(hx+hw*.72,hy+hh*.3,hw*.1,hh*.13);
-    const doorX=hx+hw*.42,doorY=hy+hh*.22,doorW=hw*.2,doorH=hh*.78;c.fillStyle=`rgba(255,190,116,${.55+doorOpen*.4})`;c.fillRect(doorX-doorW*.45,doorY,doorW*.9,doorH);c.fillStyle="#181817";c.save();c.translate(doorX,doorY);c.transform(1,0,-doorOpen*.42,1,0,0);c.fillRect(0,0,doorW,doorH);c.restore();
-    // A bundled silhouette walks away, then thins into the snow haze.
-    if(ratio>.16&&ratio<.94){const k=Math.min(1,walk);const x=w*(.51-.25*k),y=h*(.69+.34*k),scale=.16+.48*k;const fade=(1-mist)*Math.min(1,(ratio-.16)/.08);c.save();c.globalAlpha=fade;c.fillStyle="#202b2c";c.beginPath();c.ellipse(x,y-scale*.92,scale*.17,scale*.22,0,0,Math.PI*2);c.fill();c.beginPath();c.moveTo(x-scale*.15,y-scale*.73);c.quadraticCurveTo(x-scale*.27,y-scale*.4,x-scale*.2,y-scale*.18);c.lineTo(x+scale*.2,y-scale*.18);c.quadraticCurveTo(x+scale*.25,y-scale*.5,x+scale*.14,y-scale*.73);c.closePath();c.fill();c.strokeStyle="#7c2928";c.lineWidth=Math.max(2,scale*.06);c.beginPath();c.moveTo(x-scale*.13,y-scale*.64);c.quadraticCurveTo(x+Math.sin(t*2)*scale*.12,y-scale*.5,x+scale*.19,y-scale*.47);c.stroke();const stride=Math.sin(t*7)*scale*.08;c.strokeStyle="#202b2c";c.lineWidth=Math.max(3,scale*.08);c.beginPath();c.moveTo(x-scale*.08,y-scale*.2);c.lineTo(x-scale*.13+stride,y);c.moveTo(x+scale*.08,y-scale*.2);c.lineTo(x+scale*.13-stride,y);c.stroke();c.restore();}
-    // Snow drifts continuously; the tiny deterministic pattern avoids layout flicker.
-    c.fillStyle="#f5f6f0";for(let i=0;i<90;i++){const seed=(i*7919)%997/997,x=(seed*w+Math.sin(t*.4+i)*19+w)%w,y=((i*131+elapsed*(.018+(i%5)*.004))%(h+30))-10,r=.7+(i%4)*.42;c.globalAlpha=.22+(i%6)*.08;c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fill();}c.globalAlpha=1;
-    const vignette=c.createRadialGradient(w*.5,h*.48,h*.13,w*.5,h*.48,h*.78);vignette.addColorStop(.45,"rgba(3,8,10,0)");vignette.addColorStop(1,"rgba(3,8,10,.63)");c.fillStyle=vignette;c.fillRect(0,0,w,h);
-    if(ratio>.86){c.globalAlpha=Math.min(1,(ratio-.86)/.1);c.fillStyle="#f2ead8";c.textAlign="center";c.font=`${Math.max(14,Math.min(22,w*.022))}px Georgia`;c.fillText("THE NORTH KEEPS ITS SILENCE",w*.5,h*.82);c.globalAlpha=1;}
+    const t=elapsed/1000,pan=Math.sin(t*.12)*w*.008,escape=Math.max(0,Math.min(1,(ratio-.22)/.65)),haze=Math.max(0,Math.min(1,(ratio-.78)/.2));
+    const sky=c.createLinearGradient(0,0,0,h);sky.addColorStop(0,"#111629");sky.addColorStop(.46,"#353e5c");sky.addColorStop(.72,"#777a94");sky.addColorStop(1,"#c1c4ce");c.fillStyle=sky;c.fillRect(0,0,w,h);
+    const mountain=(color,y,phase,amp)=>{c.fillStyle=color;c.beginPath();c.moveTo(0,h*y);for(let x=0;x<=w+20;x+=w/12){const yy=h*(y+Math.sin(x*.008+phase)*amp+Math.sin(x*.021+phase*2)*amp*.42);c.lineTo(x+pan*.2,yy);if(x>0&&x%Math.round(w/6)<w/12)c.lineTo(x-w/24,yy-h*.12);}c.lineTo(w,h);c.lineTo(0,h);c.fill();};
+    mountain("#252b48",.40,.2,.045);mountain("#343c59",.49,1.3,.035);mountain("#464d68",.57,2.1,.024);
+    // Snowy village: steep rooflines and warm windows echo the supplied painting.
+    const houses=[{x:.25,y:.43,w:.2,h:.24,roof:.16},{x:.43,y:.49,w:.15,h:.19,roof:.13},{x:.61,y:.45,w:.2,h:.28,roof:.19},{x:.82,y:.51,w:.15,h:.19,roof:.13},{x:.96,y:.47,w:.16,h:.23,roof:.16}];
+    houses.forEach((a,i)=>{const x=w*a.x+pan*(.3+i*.1),y=h*a.y,ww=w*a.w,hh=h*a.h;c.fillStyle=i%2?"#20243d":"#191d34";c.beginPath();c.moveTo(x-ww*.08,y+hh*.12);c.lineTo(x+ww*.46,y-h*a.roof);c.lineTo(x+ww*1.06,y+hh*.1);c.lineTo(x+ww,y+hh);c.lineTo(x,y+hh);c.closePath();c.fill();c.fillStyle="#171b30";c.beginPath();c.moveTo(x-ww*.14,y+hh*.13);c.lineTo(x+ww*.46,y-h*a.roof*1.16);c.lineTo(x+ww*1.13,y+hh*.1);c.lineTo(x+ww*.98,y+hh*.18);c.lineTo(x+ww*.46,y-h*a.roof*.78);c.lineTo(x-ww*.02,y+hh*.2);c.closePath();c.fill();
+      const glow=.68+.14*Math.sin(t*1.1+i);c.fillStyle=`rgba(245,225,166,${glow})`;for(const wx of [.23,.7]){c.fillRect(x+ww*wx,y+hh*.38,ww*.12,hh*.16);c.fillRect(x+ww*wx,y+hh*.68,ww*.1,hh*.13);}c.fillStyle="rgba(248,216,147,.22)";c.beginPath();c.ellipse(x+ww*.5,y+hh*.57,ww*.62,hh*.78,0,0,Math.PI*2);c.fill();});
+    // Uneven snowbanks frame the lane; the road bends toward the lit village.
+    c.fillStyle="#58627f";c.beginPath();c.moveTo(0,h*.57);c.bezierCurveTo(w*.18,h*.52,w*.36,h*.66,w*.55,h*.56);c.bezierCurveTo(w*.75,h*.53,w*.9,h*.57,w,h*.49);c.lineTo(w,h);c.lineTo(0,h);c.fill();
+    c.fillStyle="#9299b0";c.beginPath();c.moveTo(0,h*.66);c.bezierCurveTo(w*.2,h*.62,w*.33,h*.72,w*.5,h*.66);c.bezierCurveTo(w*.67,h*.61,w*.88,h*.72,w,h*.64);c.lineTo(w,h);c.lineTo(0,h);c.fill();
+    const snow=c.createLinearGradient(0,h*.62,0,h);snow.addColorStop(0,"#aeb4c4");snow.addColorStop(.45,"#d3d4dc");snow.addColorStop(1,"#8e98ad");c.fillStyle=snow;c.beginPath();c.moveTo(0,h*.73);c.bezierCurveTo(w*.22,h*.67,w*.37,h*.78,w*.55,h*.68);c.bezierCurveTo(w*.73,h*.64,w*.88,h*.74,w,h*.68);c.lineTo(w,h);c.lineTo(0,h);c.fill();
+    c.fillStyle="rgba(45,54,79,.5)";c.beginPath();c.moveTo(w*.48,h*.64);c.quadraticCurveTo(w*.44,h*.78,w*.36,h);c.lineTo(w*.75,h);c.quadraticCurveTo(w*.6,h*.79,w*.57,h*.65);c.closePath();c.fill();
+    // A crooked fence crosses the foreground, sliding past as the camera advances.
+    const fenceY=h*.66;for(let i=0;i<8;i++){const x=w*(i/7)-w*.03+pan*1.2,y=fenceY+Math.sin(i*2.2)*h*.025;c.fillStyle="#171c32";c.beginPath();c.moveTo(x-w*.006,y-h*.2);c.lineTo(x+w*.008,y-h*.19);c.lineTo(x+w*.012,y+h*.02);c.lineTo(x-w*.007,y+h*.02);c.closePath();c.fill();}
+    c.strokeStyle="#181e34";c.lineWidth=Math.max(4,w*.006);c.beginPath();c.moveTo(-w*.04,h*.58);c.quadraticCurveTo(w*.3,h*.65,w*.5,h*.62);c.quadraticCurveTo(w*.75,h*.6,w*1.02,h*.53);c.moveTo(-w*.03,h*.67);c.quadraticCurveTo(w*.3,h*.73,w*.52,h*.7);c.quadraticCurveTo(w*.77,h*.67,w*1.02,h*.62);c.stroke();
+    // The player walks away along the lane, gradually disappearing into snowfall.
+    if(ratio>.18&&ratio<.95){const x=w*(.53-.23*escape),y=h*(.71+.32*escape),s=h*(.075+.13*escape),fade=(1-haze)*Math.min(1,(ratio-.18)/.1);c.save();c.globalAlpha=fade;c.fillStyle="#1b2138";c.beginPath();c.ellipse(x,y-s*.98,s*.2,s*.22,0,0,Math.PI*2);c.fill();c.beginPath();c.moveTo(x-s*.18,y-s*.77);c.quadraticCurveTo(x-s*.33,y-s*.42,x-s*.2,y-s*.18);c.lineTo(x+s*.19,y-s*.18);c.quadraticCurveTo(x+s*.29,y-s*.48,x+s*.14,y-s*.77);c.closePath();c.fill();c.strokeStyle="#772d3c";c.lineWidth=Math.max(3,s*.09);c.beginPath();c.moveTo(x-s*.12,y-s*.66);c.quadraticCurveTo(x+Math.sin(t*2)*s*.12,y-s*.54,x+s*.24,y-s*.5);c.stroke();const step=Math.sin(t*6)*s*.12;c.lineWidth=Math.max(4,s*.12);c.strokeStyle="#1b2138";c.beginPath();c.moveTo(x-s*.08,y-s*.2);c.lineTo(x-s*.14+step,y);c.moveTo(x+s*.08,y-s*.2);c.lineTo(x+s*.14-step,y);c.stroke();c.restore();}
+    // Layered snow and restrained grain keep the scene moving without overwhelming the illustration.
+    for(let i=0;i<150;i++){const seed=(i*7919)%997/997,x=(seed*w+Math.sin(t*.35+i*1.3)*w*.012+w)%w,y=((i*131+elapsed*(.014+(i%6)*.003))%(h+30))-10,r=.6+(i%5)*.38;c.globalAlpha=.18+(i%7)*.035;c.fillStyle=i%9===0?"#fffdf6":"#e5e8ef";c.beginPath();c.ellipse(x,y,r,r*1.6,-.18,0,Math.PI*2);c.fill();}c.globalAlpha=1;
+    const vignette=c.createRadialGradient(w*.52,h*.48,h*.15,w*.52,h*.48,h*.82);vignette.addColorStop(.4,"rgba(7,9,20,0)");vignette.addColorStop(1,"rgba(8,10,22,.68)");c.fillStyle=vignette;c.fillRect(0,0,w,h);
+    if(ratio>.87){c.globalAlpha=Math.min(1,(ratio-.87)/.1);c.fillStyle="#f0edf0";c.textAlign="center";c.font=`${Math.max(14,Math.min(22,w*.022))}px Georgia`;c.fillText("THE NORTH KEEPS ITS SILENCE",w*.5,h*.84);c.globalAlpha=1;}
   }
   const canvas = $("#gate-scene"), puzzleDialog = $("#puzzle-dialog"), tapeDialog = $("#tape-dialog"), morsePanel = $("#morse-panel");
   const ruffleContainer = $("#ruffle-container");
@@ -60,7 +61,7 @@
     const index = currentIndex(), stage = puzzles[index];
     $("#stage-count").textContent = "ROOM 09-A / PRIVATE RESIDENCE";
     $("#stage-title").textContent = progress.finished ? "The House Is Still" : "The North Room";
-    $("#stage-objective").textContent = progress.finished ? "The room settles. The record is complete." : !progress.registerActivated ? "The dark keeps a small warmth near the writing desk." : stage?.type==="morse" ? "A question lingers in the operator’s chair." : stage?.type==="time-window" ? "A false midnight rests over a polar sea." : stage?.type==="photo-wall" ? "The winter portrait is missing its center." : stage?.type==="mirror-code" ? "A thin line of light slips behind old glass." : stage?.type==="uuencode" ? "The painted trees carry one shadow too many." : stage?.type==="earth-mirror" ? "Four reflections disagree about where north begins." : stage?.type==="metadata-photos" ? "Six negatives remember the same evening differently." : "A little dust has shifted in the room.";
+    $("#stage-objective").textContent = progress.finished ? "The room settles. The record is complete." : !progress.registerActivated ? "The dark keeps a small warmth near the writing desk." : stage?.type==="morse" ? "A question lingers in the operator’s chair." : stage?.type==="time-window" ? "A polar shadow holds a precise moment." : stage?.type==="photo-wall" ? "The winter portrait is missing its center." : stage?.type==="mirror-code" ? "A thin line of light slips behind old glass." : stage?.type==="winter-decoder" ? "The painted trees carry one shadow too many." : stage?.type==="earth-mirror" ? "Four reflections disagree about where north begins." : stage?.type==="metadata-photos" ? "Six negatives remember the same evening differently." : "A little dust has shifted in the room.";
     $("#gate-state").textContent = progress.finished ? "RECORD CLOSED" : progress.registerActivated ? "ROOM OCCUPIED" : "POWER LOST";
     const progressBar = $("#stage-progress"); progressBar.replaceChildren();
     for (let i=0;i<10;i++) { const dot=document.createElement("i"); dot.className = i < progress.solved.length ? "complete" : i === index && !progress.finished ? "current" : ""; progressBar.append(dot); }
@@ -83,7 +84,7 @@
   function onSceneFocusItem(id) {
     const prompt=$("#scene-prompt"); if(!prompt)return;
     if(!id){prompt.classList.remove("visible");return;}
-    const text={flashlight:"HAND LAMP · CLICK TO RECOVER",gate_tooth:"SMALL BRASS KEY · PRESS E TO TAKE",rug_corner:"RUG EDGE · LAMP + CROUCH · PRESS E TO LIFT",chair:sceneController?.isSeated()?"OPERATOR'S CHAIR · C TO STAND":"OPERATOR'S CHAIR · CLICK / E TO SIT",cryptex_key:"KEY RECOVERED",artifact:"EVIDENCE FOUND · CLICK TO INSPECT"};
+    const text={flashlight:"HAND LAMP · CLICK TO RECOVER",gate_tooth:"SMALL BRASS KEY · PRESS E TO TAKE",rug_corner:"RUG EDGE · LAMP + CROUCH · PRESS E TO LIFT",chair:sceneController?.isSeated()?"OPERATOR'S CHAIR · C TO STAND":"OPERATOR'S CHAIR · CLICK / E TO SIT",bed:"CANOPY BED · PRESS E TO LIE DOWN",drawer1:"CABINET · PRESS E TO OPEN DRAWER",drawer2:"CABINET · PRESS E TO OPEN DRAWER",drawer3:"CABINET · PRESS E TO OPEN DRAWER",cryptex_key:"KEY RECOVERED",artifact:"EVIDENCE FOUND · CLICK TO INSPECT"};
     prompt.textContent=text[id]||"EVIDENCE FOUND · CLICK TO INSPECT"; prompt.classList.add("visible");
   }
   function onSceneItemFound(id) {
@@ -144,9 +145,16 @@
   }
   async function initializeScene() {
     try {
-      const sceneModule=await import("./scene3d.room.js?v=27");
+      const sceneModule=await import("./scene3d.room.js?v=28");
       const {createGateScene}=sceneModule; createCryptexViewer=sceneModule.createCryptexViewer;
-      sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem,receiveMorsePulse,()=>{if(!morsePanel.hidden){morsePanel.hidden=true;resetMorseInput();}},skipCurrentStage);
+      sceneController=createGateScene(canvas,onSceneSelect,onSceneItemFound,onSceneFocusItem,receiveMorsePulse,()=>{if(!morsePanel.hidden){morsePanel.hidden=true;resetMorseInput();}},skipCurrentStage,(id)=>{
+        const clues={
+          drawer1:["The coldest direction is written where no sun reaches.","A clock can tell the truth in the wrong frame.","An image can be rebuilt one piece at a time.","Look for what the mirror refuses to show."],
+          drawer2:["A record’s order matters as much as its contents.","Four views share a single north.","Names can fall as quietly as keys.","The last message wears more than one wrapper."],
+          drawer3:["The shortest route is sometimes hidden by the room itself.","Count what the photograph remembers, not what the caption says.","The answer is an object, not a direction.","A small inscription names the alphabet to use."]
+        };
+        const index=Math.min(progress.solved.length,9);showToast(clues[id]?.[index]||"The drawer’s paper is too faded to read.");
+      });
       sceneController.setRegisterActive(progress.registerActivated);
       sceneController.setSolvedCount(progress.solved.length,progress.finished);
       sceneController.setFlashlight(hasItem("flashlight"));
@@ -165,7 +173,7 @@
     $("#puzzle-title").textContent=puzzle.name; $("#puzzle-intro").textContent=puzzle.objective;
     $("#puzzle-feedback").textContent=""; $("#puzzle-feedback").classList.remove("error");
     $("#puzzle-answer").value=""; $("#puzzle-form").hidden=true; $("#puzzle-action").hidden=true;
-    const answerInput=$("#puzzle-answer");answerInput.type=puzzle.type==="time-window"?"time":"text";answerInput.step=puzzle.type==="time-window"?"60":"any";answerInput.placeholder=puzzle.type==="time-window"?"02:00 AM":"ENTER CODE";
+    const answerInput=$("#puzzle-answer");answerInput.type=puzzle.type==="time-window"?"time":"text";answerInput.step=puzzle.type==="time-window"?"60":"any";answerInput.placeholder=puzzle.type==="time-window"?"14:00":"ENTER CODE";
     renderPuzzleWidget(puzzle);
     if(puzzle.type==="cryptex")sceneController?.setCryptexVisible(true);
     puzzleDialog.showModal(); sceneController?.setPaused(true);if(puzzle.type==="cryptex")requestAnimationFrame(()=>cryptexViewer?.resize());
@@ -283,9 +291,9 @@
       box.innerHTML='<p class="artifact-copy">A loose hinge hides a small brass object. The room shifts when the mirror is moved.</p><div class="mirror-reveal-stage"><div class="mirror-reveal-frame" id="mirror-reveal-frame"><span>GLASS</span></div><div class="mirror-drop-status" id="mirror-drop-status">THE FRAME IS STILL</div></div><button id="mirror-turn" class="submit-button" type="button">TURN THE MIRROR</button><div class="artifact-readout" id="mirror-readout" hidden>THE OBJECT HAS FALLEN · ITS NAME IS STILL NEEDED</div>';
       $("#mirror-turn").addEventListener("click",()=>{if(activePuzzleState.mirrorRevealed)return;activePuzzleState.mirrorRevealed=true;sceneController?.turnMirrorAndDrop();$("#mirror-reveal-frame").classList.add("turned");$("#mirror-drop-status").textContent="A SMALL OBJECT TUMBLES TO THE FLOOR";setTimeout(()=>{$("#mirror-readout").hidden=false;setAnswerMode("NAME OF THE DROPPED OBJECT");$("#puzzle-answer").focus();},1150);});
       setActionMode("TURN THE MIRROR");$("#puzzle-action").hidden=true;
-    } else if(p.type==="uuencode") {
-      sceneController?.revealTreeNote();box.innerHTML='<p class="artifact-copy">The painting has shifted from the wall. A line of old code was tucked behind the winter trees.</p><pre class="final-uu-code">begin 644 north-pole.txt\n,5T%,2R!/5513241%\n \nend</pre><p class="small-note">Keep the spaces and punctuation in the decoded instruction.</p>';
-      setAnswerMode("DECODED INSTRUCTION");
+    } else if(p.type==="winter-decoder") {
+      sceneController?.revealTreeNote();box.innerHTML='<p class="artifact-copy">The painting has shifted. The record carries its original file wrapper; preserve every character, including case.</p><pre class="final-uu-code">begin 644 north-pole.txt\n05C!&amp;35-Y,5!65E)44U521@\nend</pre><p class="small-note">A mark somewhere in the room may name the next decoding family.</p>';
+      activePuzzleState.decoderStep=0;setAnswerMode("UU-DECODED PAYLOAD");
     }
   }
   function normalized(value) { return String(value).toUpperCase().replace(/[^A-Z0-9]/g,""); }
@@ -315,8 +323,13 @@
     const puzzle=puzzles[currentPuzzle],value=$("#puzzle-answer").value;
     if(puzzle?.type==="time-window"){
       const match=/^(\d{2}):(\d{2})$/.exec(value);if(!match){feedback("SET A CAMERA TIME FIRST.",true);return;}
-      const minutes=Number(match[1])*60+Number(match[2]);if(Math.abs(minutes-120)>3){feedback("THE CAMERA CLOCK IS MORE THAN THREE MINUTES FROM THE EXPOSURE.",true);return;}
-      solvePuzzle("0200");return;
+      const minutes=Number(match[1])*60+Number(match[2]);if(Math.abs(minutes-840)>3){feedback("THE CAMERA CLOCK IS MORE THAN THREE MINUTES FROM THE EXPOSURE.",true);return;}
+      solvePuzzle("1400");return;
+    }
+    if(puzzle?.type==="winter-decoder"){
+      const step=activePuzzleState.decoderStep||0,answer=normalized(value);
+      if(step===0){if(String(value).trim()!=="V0FMSy1PVVRTSURF"){feedback("THE FILE BLOCK DOES NOT DECODE TO THAT PAYLOAD.",true);return;}activePuzzleState.decoderStep=1;$("#puzzle-content").innerHTML='<p class="artifact-copy">The wrapped bytes resolve to a token rather than a sentence. The cabinet carries a short inscription. Enter the name of that encoding.</p><div class="artifact-readout">PAYLOAD RECOVERED · CHARACTER ORDER PRESERVED</div>';$("#puzzle-answer").value="";$("#puzzle-answer").placeholder="ENCODING NAME";$("#answer-label").textContent="NAME THE ENCODING";feedback("FIRST LAYER ACCEPTED · RECORD CONTINUES");return;}
+      if(step===1){if(answer!=="BASE64URL"){feedback("THAT IS NOT THE INSCRIPTION ON THE CABINET.",true);return;}activePuzzleState.decoderStep=2;$("#puzzle-content").innerHTML='<p class="artifact-copy">Decode the recovered token using the named alphabet. The final phrase is an instruction; enter it with the word break intact.</p><div class="artifact-readout">V0FMSy1PVVRTSURF</div>';$("#puzzle-answer").value="";$("#puzzle-answer").placeholder="FINAL INSTRUCTION";$("#answer-label").textContent="DECODED INSTRUCTION";feedback("SECOND LAYER ACCEPTED · FINAL RECORD READY");return;}
     }
     solvePuzzle(value);
   }
