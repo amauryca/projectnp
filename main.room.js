@@ -1,32 +1,5 @@
 (() => {
   const $ = (selector) => document.querySelector(selector);
-  function drawEndingFilm(canvas, ratio, elapsed) {
-    const dpr=Math.min(window.devicePixelRatio||1,1.6),w=Math.max(1,canvas.clientWidth),h=Math.max(1,canvas.clientHeight);
-    if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);}
-    const c=canvas.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,w,h);
-    const t=elapsed/1000,pan=Math.sin(t*.12)*w*.008,escape=Math.max(0,Math.min(1,(ratio-.22)/.65)),haze=Math.max(0,Math.min(1,(ratio-.78)/.2));
-    const sky=c.createLinearGradient(0,0,0,h);sky.addColorStop(0,"#111629");sky.addColorStop(.46,"#353e5c");sky.addColorStop(.72,"#777a94");sky.addColorStop(1,"#c1c4ce");c.fillStyle=sky;c.fillRect(0,0,w,h);
-    const mountain=(color,y,phase,amp)=>{c.fillStyle=color;c.beginPath();c.moveTo(0,h*y);for(let x=0;x<=w+20;x+=w/12){const yy=h*(y+Math.sin(x*.008+phase)*amp+Math.sin(x*.021+phase*2)*amp*.42);c.lineTo(x+pan*.2,yy);if(x>0&&x%Math.round(w/6)<w/12)c.lineTo(x-w/24,yy-h*.12);}c.lineTo(w,h);c.lineTo(0,h);c.fill();};
-    mountain("#252b48",.40,.2,.045);mountain("#343c59",.49,1.3,.035);mountain("#464d68",.57,2.1,.024);
-    // Snowy village: steep rooflines and warm windows echo the supplied painting.
-    const houses=[{x:.25,y:.43,w:.2,h:.24,roof:.16},{x:.43,y:.49,w:.15,h:.19,roof:.13},{x:.61,y:.45,w:.2,h:.28,roof:.19},{x:.82,y:.51,w:.15,h:.19,roof:.13},{x:.96,y:.47,w:.16,h:.23,roof:.16}];
-    houses.forEach((a,i)=>{const x=w*a.x+pan*(.3+i*.1),y=h*a.y,ww=w*a.w,hh=h*a.h;c.fillStyle=i%2?"#20243d":"#191d34";c.beginPath();c.moveTo(x-ww*.08,y+hh*.12);c.lineTo(x+ww*.46,y-h*a.roof);c.lineTo(x+ww*1.06,y+hh*.1);c.lineTo(x+ww,y+hh);c.lineTo(x,y+hh);c.closePath();c.fill();c.fillStyle="#171b30";c.beginPath();c.moveTo(x-ww*.14,y+hh*.13);c.lineTo(x+ww*.46,y-h*a.roof*1.16);c.lineTo(x+ww*1.13,y+hh*.1);c.lineTo(x+ww*.98,y+hh*.18);c.lineTo(x+ww*.46,y-h*a.roof*.78);c.lineTo(x-ww*.02,y+hh*.2);c.closePath();c.fill();
-      const glow=.68+.14*Math.sin(t*1.1+i);c.fillStyle=`rgba(245,225,166,${glow})`;for(const wx of [.23,.7]){c.fillRect(x+ww*wx,y+hh*.38,ww*.12,hh*.16);c.fillRect(x+ww*wx,y+hh*.68,ww*.1,hh*.13);}c.fillStyle="rgba(248,216,147,.22)";c.beginPath();c.ellipse(x+ww*.5,y+hh*.57,ww*.62,hh*.78,0,0,Math.PI*2);c.fill();});
-    // Uneven snowbanks frame the lane; the road bends toward the lit village.
-    c.fillStyle="#58627f";c.beginPath();c.moveTo(0,h*.57);c.bezierCurveTo(w*.18,h*.52,w*.36,h*.66,w*.55,h*.56);c.bezierCurveTo(w*.75,h*.53,w*.9,h*.57,w,h*.49);c.lineTo(w,h);c.lineTo(0,h);c.fill();
-    c.fillStyle="#9299b0";c.beginPath();c.moveTo(0,h*.66);c.bezierCurveTo(w*.2,h*.62,w*.33,h*.72,w*.5,h*.66);c.bezierCurveTo(w*.67,h*.61,w*.88,h*.72,w,h*.64);c.lineTo(w,h);c.lineTo(0,h);c.fill();
-    const snow=c.createLinearGradient(0,h*.62,0,h);snow.addColorStop(0,"#aeb4c4");snow.addColorStop(.45,"#d3d4dc");snow.addColorStop(1,"#8e98ad");c.fillStyle=snow;c.beginPath();c.moveTo(0,h*.73);c.bezierCurveTo(w*.22,h*.67,w*.37,h*.78,w*.55,h*.68);c.bezierCurveTo(w*.73,h*.64,w*.88,h*.74,w,h*.68);c.lineTo(w,h);c.lineTo(0,h);c.fill();
-    c.fillStyle="rgba(45,54,79,.5)";c.beginPath();c.moveTo(w*.48,h*.64);c.quadraticCurveTo(w*.44,h*.78,w*.36,h);c.lineTo(w*.75,h);c.quadraticCurveTo(w*.6,h*.79,w*.57,h*.65);c.closePath();c.fill();
-    // A crooked fence crosses the foreground, sliding past as the camera advances.
-    const fenceY=h*.66;for(let i=0;i<8;i++){const x=w*(i/7)-w*.03+pan*1.2,y=fenceY+Math.sin(i*2.2)*h*.025;c.fillStyle="#171c32";c.beginPath();c.moveTo(x-w*.006,y-h*.2);c.lineTo(x+w*.008,y-h*.19);c.lineTo(x+w*.012,y+h*.02);c.lineTo(x-w*.007,y+h*.02);c.closePath();c.fill();}
-    c.strokeStyle="#181e34";c.lineWidth=Math.max(4,w*.006);c.beginPath();c.moveTo(-w*.04,h*.58);c.quadraticCurveTo(w*.3,h*.65,w*.5,h*.62);c.quadraticCurveTo(w*.75,h*.6,w*1.02,h*.53);c.moveTo(-w*.03,h*.67);c.quadraticCurveTo(w*.3,h*.73,w*.52,h*.7);c.quadraticCurveTo(w*.77,h*.67,w*1.02,h*.62);c.stroke();
-    // The player walks away along the lane, gradually disappearing into snowfall.
-    if(ratio>.18&&ratio<.95){const x=w*(.53-.23*escape),y=h*(.71+.32*escape),s=h*(.075+.13*escape),fade=(1-haze)*Math.min(1,(ratio-.18)/.1);c.save();c.globalAlpha=fade;c.fillStyle="#1b2138";c.beginPath();c.ellipse(x,y-s*.98,s*.2,s*.22,0,0,Math.PI*2);c.fill();c.beginPath();c.moveTo(x-s*.18,y-s*.77);c.quadraticCurveTo(x-s*.33,y-s*.42,x-s*.2,y-s*.18);c.lineTo(x+s*.19,y-s*.18);c.quadraticCurveTo(x+s*.29,y-s*.48,x+s*.14,y-s*.77);c.closePath();c.fill();c.strokeStyle="#772d3c";c.lineWidth=Math.max(3,s*.09);c.beginPath();c.moveTo(x-s*.12,y-s*.66);c.quadraticCurveTo(x+Math.sin(t*2)*s*.12,y-s*.54,x+s*.24,y-s*.5);c.stroke();const step=Math.sin(t*6)*s*.12;c.lineWidth=Math.max(4,s*.12);c.strokeStyle="#1b2138";c.beginPath();c.moveTo(x-s*.08,y-s*.2);c.lineTo(x-s*.14+step,y);c.moveTo(x+s*.08,y-s*.2);c.lineTo(x+s*.14-step,y);c.stroke();c.restore();}
-    // Layered snow and restrained grain keep the scene moving without overwhelming the illustration.
-    for(let i=0;i<150;i++){const seed=(i*7919)%997/997,x=(seed*w+Math.sin(t*.35+i*1.3)*w*.012+w)%w,y=((i*131+elapsed*(.014+(i%6)*.003))%(h+30))-10,r=.6+(i%5)*.38;c.globalAlpha=.18+(i%7)*.035;c.fillStyle=i%9===0?"#fffdf6":"#e5e8ef";c.beginPath();c.ellipse(x,y,r,r*1.6,-.18,0,Math.PI*2);c.fill();}c.globalAlpha=1;
-    const vignette=c.createRadialGradient(w*.52,h*.48,h*.15,w*.52,h*.48,h*.82);vignette.addColorStop(.4,"rgba(7,9,20,0)");vignette.addColorStop(1,"rgba(8,10,22,.68)");c.fillStyle=vignette;c.fillRect(0,0,w,h);
-    if(ratio>.87){c.globalAlpha=Math.min(1,(ratio-.87)/.1);c.fillStyle="#f0edf0";c.textAlign="center";c.font=`${Math.max(14,Math.min(22,w*.022))}px Georgia`;c.fillText("THE NORTH KEEPS ITS SILENCE",w*.5,h*.84);c.globalAlpha=1;}
-  }
   const canvas = $("#gate-scene"), puzzleDialog = $("#puzzle-dialog"), tapeDialog = $("#tape-dialog"), morsePanel = $("#morse-panel");
   const ruffleContainer = $("#ruffle-container");
   const SAVE_KEY = "np-gate-09-progress-v11-no-hints-ending";
@@ -333,23 +306,51 @@
     }
     solvePuzzle(value);
   }
-  function startEnding(){
-    $("#gate-scene").focus();
-    const overlay=$("#ending-cutscene"),film=$("#ending-film"),caption=$("#ending-caption"),bar=$("#ending-progress-bar"),final=$("#ending-final");
-    overlay.hidden=false;final.hidden=true;caption.hidden=false;bar.style.width="0%";film.style.opacity="0";
-    const position=sceneController?.getPlayerPosition?.()||{x:0,z:0};
-    const distance=Math.hypot(position.x,position.z+6.35),fadeDuration=Math.round(850+Math.min(1850,distance*115));
-    film.style.setProperty("--film-fade",`${fadeDuration}ms`);
-    sceneController?.playEnding(30000);sceneController?.setPaused(true);
-    if(progress.endingSeen){caption.hidden=true;final.hidden=false;drawEndingFilm(film,1,30000);requestAnimationFrame(()=>film.style.opacity="1");return;}
-    const started=performance.now();
-    const frame=now=>{
-      const elapsed=now-started,amount=Math.max(0,Math.min(1,elapsed/30000));drawEndingFilm(film,amount,elapsed);bar.style.width=`${amount*100}%`;
-      caption.textContent=amount<.14?"THE LAST EMBER GOES QUIET":amount<.32?"THE DOOR OPENS ON A WHITE SKY":amount<.78?"FOOTPRINTS DISAPPEAR IN THE SNOW":"WINTER KEEPS THE REST";
-      if(amount>=1){caption.hidden=true;final.hidden=false;progress.endingSeen=true;saveProgress();return;}
-      requestAnimationFrame(frame);
-    };
-    requestAnimationFrame(()=>{film.style.opacity="1";requestAnimationFrame(frame);});
+  function startEnding() {
+    const overlay = $("#ending-cutscene");
+    if (!overlay.hidden) return;
+    const film = $("#ending-film");
+    const final = $("#ending-final");
+    const button = $("#ending-action");
+    const bar = $("#ending-progress-bar");
+    const position = sceneController?.getPlayerPosition?.() || { x: 0, z: 0 };
+    const distance = Math.hypot(position.x, position.z + 6.35);
+    overlay.style.setProperty("--film-fade", Math.round(850 + Math.min(1850, distance * 115)) + "ms");
+    sceneController?.setPaused(true);
+    if (document.pointerLockElement) document.exitPointerLock();
+    overlay.hidden = false;
+    overlay.focus();
+    requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add("visible")));
+
+    function showAction(label) {
+      button.textContent = label;
+      button.hidden = false;
+    }
+    function playFilm() {
+      final.hidden = true;
+      button.hidden = true;
+      if (film.error) film.load();
+      film.play().catch(() => showAction(film.error ? "Retry film" : "Play film"));
+    }
+    film.addEventListener("timeupdate", () => {
+      if (film.duration) bar.style.width = (100 * film.currentTime / film.duration) + "%";
+    });
+    film.addEventListener("error", () => showAction("Retry film"));
+    film.addEventListener("ended", () => {
+      final.hidden = false;
+      progress.endingSeen = true;
+      saveProgress();
+      showAction("Replay film");
+    });
+    button.onclick = playFilm;
+    film.src = "assets/winter-ending.mp4";
+    if (progress.endingSeen) {
+      film.poster = "assets/winter-ending-final.jpg";
+      final.hidden = false;
+      showAction("Replay film");
+    } else {
+      playFilm();
+    }
   }
   function closePuzzle() { if(puzzleDialog.open)puzzleDialog.close();sceneController?.setCryptexVisible(false);sceneController?.setPaused(Boolean(progress.finished));cryptexViewer?.dispose();cryptexViewer=null;puzzleDialog.classList.remove("solving"); }
 
@@ -412,4 +413,3 @@
   const musicPreference=localStorage.getItem(MUSIC_KEY);setMusic(musicPreference!=="off");
   renderStage();initializeScene();
 })();
-

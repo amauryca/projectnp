@@ -115,3 +115,9 @@ html,body.immersive,.immersive .world{background:#160b0b}
 
 
 .inventory-slot em{display:block;margin-top:3px;color:#d6b986;font:7px var(--mono);font-style:normal;letter-spacing:.08em}.camera-clock-muted{opacity:.72}.camera-clock-muted .clock-face:after,.camera-clock-muted .clock-face b{display:none}.mirror-reveal-frame.turned{transform:perspective(500px) rotateY(142deg)}.mirror-drop-status{font:8px/1.7 var(--mono);letter-spacing:.13em;color:#c6aa80;text-align:center}
+
+
+.ending-cutscene{opacity:0;transition:opacity var(--film-fade,1400ms) ease;pointer-events:auto}
+.ending-cutscene.visible{opacity:1}
+.ending-film{opacity:1;object-fit:contain}
+#ending-action{position:absolute;z-index:3;bottom:9%;padding:.55rem 1rem;color:#f1ead7;background:#17202c;border:1px solid #c0bdaf;cursor:pointer}

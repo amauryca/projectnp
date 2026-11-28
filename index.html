@@ -9,10 +9,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.room.css?v=13">
+  <link rel="stylesheet" href="styles.room.css?v=14">
   <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
   <script defer src="puzzles.js?v=15"></script>
-  <script defer src="main.room.js?v=29"></script>
+  <script defer src="main.room.js?v=30"></script>
 </head>
 <body class="immersive">
   <main class="world manor-room" id="world" aria-label="The North Room">
@@ -87,13 +87,12 @@
   </dialog>
 
   <div id="transition-cover" aria-hidden="true"></div>
-  <section id="ending-cutscene" class="ending-cutscene" aria-live="polite" aria-label="Winter escape film" hidden>
-    <canvas id="ending-film" class="ending-film" aria-hidden="true"></canvas>
-    <div class="ending-caption" id="ending-caption">THE LOCK GIVES WAY</div>
+  <section id="ending-cutscene" class="ending-cutscene" aria-live="polite" aria-label="Winter escape film" tabindex="-1" hidden>
+    <video id="ending-film" class="ending-film" preload="none" playsinline muted aria-label="A cat places a star on a snowman and watches it float into the moonlit sky."></video>
+    <button type="button" id="ending-action" hidden>Play film</button>
     <div class="ending-progress" aria-hidden="true"><i id="ending-progress-bar"></i></div>
     <div class="ending-final" id="ending-final" hidden>THE ARCHIVE IS CLOSED</div>
   </section>
   <footer class="page-footer immersive-footer"><span>FICTIONAL INTERACTIVE EXPERIENCE · NO CAMPUS VISIT REQUIRED</span><span>BUILD 10.02 / SOUND CONTAINS NO SPEECH</span></footer>
 </body>
 </html>
-
